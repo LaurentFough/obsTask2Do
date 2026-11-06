@@ -1,0 +1,9 @@
+{
+  "id": "task2do",
+  "name": "Task2Do",
+  "version": "0.8.0-alpha.2",
+  "minAppVersion": "1.7.2",
+  "description": "Local-first todo.txt task management with optional Autotask, Microsoft To Do, Planner and other providers.",
+  "author": "El",
+  "isDesktopOnly": true
+}

@@ -1,0 +1,7 @@
+node_modules/
+data.json
+*.log
+history.bundle
+.DS_Store
+release-assets/
+credentials.enc

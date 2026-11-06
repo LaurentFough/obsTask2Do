@@ -1,0 +1,52 @@
+.autotask-todo-card { margin: 4px 0; padding: 7px 9px; border: 1px solid var(--background-modifier-border); border-left: 3px solid var(--background-modifier-border); border-radius: 5px; }
+.autotask-todo-card > strong { display: block; font-size: .8em; font-weight: 500; overflow-wrap: anywhere; color: var(--text-muted); }
+.autotask-todo-card p { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.autotask-todo-card .autotask-todo-title { font-size: .95em; font-weight: 600; margin: 4px 0; }
+.autotask-todo-card summary { cursor: pointer; font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 3px 0; }
+.autotask-todo-card small { color: var(--text-muted); display: block; font-size: .78em; overflow-wrap: anywhere; }
+.autotask-todo-card .setting-item { padding: 4px 0 0; border: 0; min-height: 0; }
+.autotask-todo-card .setting-item-info { display: none; }
+.autotask-todo-card .setting-item-control { justify-content: flex-end; gap: 5px; }
+.autotask-todo-card button { font-size: .8em; padding: 2px 8px; height: 25px; }
+.task2do-overdue { border-left-color: var(--color-red); }
+.task2do-overdue > strong { color: var(--color-red); }
+.task2do-today { border-left-color: var(--color-orange); }
+.task2do-today > strong { color: var(--color-orange); }
+.task2do-urgent { border-left-color: var(--color-yellow); }
+.task2do-urgent > strong { color: var(--text-normal); }
+.task2do-upcoming { border-left-color: var(--color-blue); }
+.task2do-later > strong, .task2do-completed { color: var(--text-muted); }
+.task2do-completed .autotask-todo-title { text-decoration: line-through; }
+.autotask-todo-edit .setting-item-control input[type="datetime-local"] { width: 22em; max-width: 100%; }
+.autotask-todo-edit .setting-item-control select { max-width: 100%; min-width: 16em; }
+.task2do-txt-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.task2do-txt-chip { font-size: .75em; padding: 1px 6px; border-radius: 4px; color: var(--text-muted); background: var(--background-secondary); border: 1px solid var(--background-modifier-border); overflow-wrap: anywhere; max-width: 100%; }
+.task2do-priority { color: var(--text-normal); font-weight: 600; }
+.autotask-todo-card .task2do-txt-people { color: var(--text-normal); margin: 3px 0; }
+.autotask-todo-card .task2do-txt-schedule { margin: 3px 0; }
+.autotask-todo-card .task2do-txt-details summary { font-size: .75em; color: var(--text-muted); }
+.task2do-txt-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 3px 10px; font-size: .78em; margin: 5px 0; }
+.task2do-txt-fields dt { color: var(--text-muted); overflow-wrap: anywhere; }
+.task2do-txt-fields dd { margin: 0; overflow-wrap: anywhere; }
+.autotask-todo-card .task2do-txt-raw { font-family: var(--font-monospace); font-size: .75em; color: var(--text-muted); padding: 5px; background: var(--background-secondary); border-radius: 4px; }
+.task2do-toolbar { padding: 5px 0 9px; border: 0; }
+.task2do-toolbar .setting-item-info { display: none; }
+.task2do-toolbar .setting-item-control { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; width: 100%; overflow-x: auto; }
+.task2do-toolbar .setting-item-control button { flex: 0 0 auto; white-space: nowrap; }
+.task2do-toolbar .setting-item-control button:first-child { margin-right: 24px; }
+.task2do-task-group { margin-bottom: 16px; }
+.task2do-group-heading { font-size: .95em; margin: 12px 0 6px; padding-bottom: 5px; border-bottom: 1px solid var(--background-modifier-border); }
+
+/*= Version 0.7.0-alpha.1. Compact standalone descriptions and local controls. */
+.autotask-todo-card .task2do-txt-description { color: var(--text-muted); font-size: .84em; max-height: 5em; overflow: auto; }
+.task2do-txt-chip { line-height: 1.4; }
+
+/*= Version 0.8.0-alpha.1. Settings navigation adapts to narrow desktop panes. */
+.task2do-settings-version { color: var(--text-muted); font-size: .85em; margin-top: 0; }
+.task2do-settings-nav { border: 0; padding: 8px 0 14px; }
+.task2do-settings-nav .setting-item-info { display: none; }
+.task2do-settings-nav .setting-item-control { justify-content: flex-start; flex-wrap: wrap; gap: 6px; width: 100%; }
+.task2do-settings-pane > h3 { margin-top: 8px; }
+
+/*= Version 0.8.0-alpha.2. Informational task fields advertise context without changing click behavior. */
+.autotask-todo-title.task2do-has-hint, .task2do-txt-chip.task2do-has-hint, .autotask-todo-card > strong.task2do-has-hint { cursor: help; }

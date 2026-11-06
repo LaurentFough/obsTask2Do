@@ -1,5 +1,5 @@
 'use strict';
-/**= Version 0.8.0-alpha.2. Provider bundled locally; no runtime dependency installation required. */
+/**= Version 0.9.0-alpha.2. Provider bundled locally; no runtime dependency installation required. */
 const { Plugin, PluginSettingTab, Setting: HostSetting, setTooltip, Modal, ItemView, Notice, requestUrl } = require('obsidian');
 //= BEGIN BUNDLED CORE
 const { AutotaskToDoProvider } = (() => {
@@ -523,7 +523,7 @@ return module.exports;
 const { ProviderRegistry, selectTasks, toCalendarValue, fromCalendarValue, calendarZoneLabel, formatTaskDate, taskUrgency, selectAutotaskList } = (() => {
 const module = { exports: {} };
 'use strict';
-/**= Version 0.8.0-alpha.2. Shared task presentation and provider registration. */
+/**= Version 0.9.0-alpha.2. Shared task presentation and provider registration. */
 class ProviderRegistry {
   constructor() { this.providers = new Map(); }
   register(provider) {
@@ -537,7 +537,7 @@ class ProviderRegistry {
 function selectTasks(items, options = {}) {
   const state = ['all', 'open', 'completed'].includes(options.state) ? options.state : 'open';
   const search = String(options.search || '').trim().toLocaleLowerCase();
-  const result = items.filter(item => (state === 'all' || item.completed === (state === 'completed')) && (!search || [item.title, item.description, item.organizationName, item.assigneeName, item.listName, item.remoteId].filter(Boolean).join(' ').toLocaleLowerCase().includes(search)));
+  const result = items.filter(item => (state === 'all' || item.completed === (state === 'completed')) && (!search || [item.title, item.description, item.organizationName, item.assigneeName, item.listName, item.remoteId, item.ticketNumber, item.statusName, item.priorityName, item.queueName].filter(Boolean).join(' ').toLocaleLowerCase().includes(search)));
   if (options.sort !== 'none') result.sort((a, b) => {
     const left = Date.parse(a.due), right = Date.parse(b.due);
     if (!Number.isFinite(left)) return Number.isFinite(right) ? 1 : String(a.remoteId).localeCompare(String(b.remoteId));
@@ -1092,13 +1092,15 @@ return module.exports;
 const { hintElement, createHintedSetting, taskHint } = (() => {
 const module = { exports: {} };
 'use strict';
-/**= Version 0.8.0-alpha.2. Reusable, plain-text help for local UI controls. */
+/**= Version 0.9.0-alpha.2. Reusable, plain-text help for local UI controls. */
 const FIELD_HINTS = Object.freeze({
   'Autotask Zone REST URL':'Use the official REST URL for your Autotask Zone, ending /atservicesrest/v1.0/. The example zone is not auto-discovery.',
   'Assigned Resource ID':'The human resource whose assigned tasks should be listed; this is normally different from the API account.',
   'Creator Resource ID (optional)':'Your human Autotask Resource ID for delegated tasks. Blank uses Assigned Resource ID.',
   'API user Resource ID (optional)':'Include tasks created by the API account. Blank attempts username-based resource lookup.',
   'Remember credentials':'Retain the current connection credentials for restart. General → Encrypted credential vault protects saved secrets.',
+  'Enable ticket updates':'Separately allow native ticket notes and status/priority changes. The CRM To-Do write switch does not enable ticket writes.',
+  'Completed ticket status IDs':'Optional tenant-specific completed statuses. Blank uses the completion timestamp; hover ticket status details to see IDs.',
   'Enable To-Do updates':'Allow Autotask creation and explicit/scheduled updates. Enabling this does not itself modify any task.',
   'todo.txt path':'Vault-relative .txt path, for example Task2Do/todo.txt. Selecting a different path does not move the previous file or its bindings.',
   'Task file':'Choose a visible vault-relative .txt file. Existing tasks are retained and receive stable uid: tokens.',
@@ -1153,6 +1155,11 @@ const ACTION_HINTS = Object.freeze({
   'Complete':'Mark this task complete in its source, subject to permissions and verification.',
   'Reopen':'Return this task to an open state in its source; unsupported workflow/API transitions may be refused.',
   'Note':'Append a timestamped text note to the Autotask description. This is not a native threaded comment.',
+  'Ticket notes':'Read native ticket notes and their visibility; add a note only with explicit type/visibility and ticket writes enabled.',
+  'Update ticket':'Review status and priority changes. This does not edit the ticket description or assignment.',
+  'Save ticket changes':'PATCH only changed status/priority fields and verify them. Tenant workflow rules still apply.',
+  'Add ticket note':'Create one native note with the selected type and visibility. An uncertain result blocks duplicate retries.',
+  'Reconcile ticket note':'Match an existing note to the recorded fingerprint before permitting another note creation.',
   'Attachments':'List Microsoft To Do attachments; upload a small vault file or save an attachment into the vault.',
   'Publish…':'Review a destination mapping and exact values before creating or updating a Microsoft counterpart.',
   'Task file':'Select an existing task file or create a new one; task files are not moved automatically.',
@@ -1190,7 +1197,7 @@ function actionHint(label,settingName='') {
   if(/^Forget /.test(text))return 'Remove this provider’s current saved credential and connection. Remote tasks and historical credential backups are retained.';
   if(/^Connect /.test(text))return 'Configure and validate this provider connection before opening its tasks.';
   if(/^Open /.test(text)||text==='Open')return `Open ${settingName||text.replace(/^Open /,'')||'the selected view'}.`;
-  if(['General','todo.txt','Autotask','Microsoft To Do','Microsoft Planner','OpenProject','Moovila'].includes(text))return 'Show the '+text+' settings pane.';
+  if(['General','todo.txt','Autotask','Autotask Tickets','Microsoft To Do','Microsoft Planner','OpenProject','Moovila'].includes(text))return 'Show the '+text+' settings pane.';
   return String(settingName||'').trim()?fieldHint(settingName):text?text+'. Review the form before submitting.':'Review this action before submitting.';
 }
 /**= Tooltip text is static help or visible task context; never input values or HTML. */
@@ -1216,11 +1223,66 @@ function createHintedSetting(Base,nativeTooltip) {
 function hintDate(value){if(!value)return '';if(/^\d{4}-\d{2}-\d{2}$/.test(value))return value+' (date only)';const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleString(undefined,{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'Invalid date';}
 function taskHint(item,editable=true) {
   if(!item||typeof item!=='object')return '';
-  const labels={'todotxt':'Local todo.txt','autotask-todo':'Autotask','microsoft-todo':'Microsoft To Do','microsoft-planner':'Microsoft Planner','openproject':'OpenProject','moovila':'Moovila'};
-  const edits={'todotxt':'Edit title, description, priority, dates, projects and contexts.','autotask-todo':'Edit task text, assignee and schedule. Change company is inside Edit; creator attribution is read-only.','microsoft-todo':'Edit title, description and deadline.','microsoft-planner':'Edit title, description, dates, bucket and assignments.','openproject':'Edit fields allowed by this project’s forms and workflow.'};
-  return [labels[item.provider]||'Task',item.remoteId?'ID '+item.remoteId:'',item.listName||item.source||'',item.organizationName||'',item.assigneeName?'Assigned to '+item.assigneeName:'',item.creatorName?'Created by '+item.creatorName:item.creatorId!=null?'Created by resource #'+item.creatorId:'',item.start?'Start: '+hintDate(item.start):'',item.dueDate||item.due?'Due: '+hintDate(item.dueDate||item.due):'',item.description?String(item.description).slice(0,500):'',editable?(edits[item.provider]||'Use Edit to change supported fields.')+' Use the Edit button; the title is not a direct-edit control.':'Read-only source; editing is not available in this panel.'].filter(Boolean).join('\n');
+  const labels={'todotxt':'Local todo.txt','autotask-todo':'Autotask','autotask-tickets':'Autotask Tickets','microsoft-todo':'Microsoft To Do','microsoft-planner':'Microsoft Planner','openproject':'OpenProject','moovila':'Moovila'};
+  const edits={'autotask-tickets':'Update ticket status and priority; use Ticket notes for native notes. Description and assignment stay unchanged.','todotxt':'Edit title, description, priority, dates, projects and contexts.','autotask-todo':'Edit task text, assignee and schedule. Change company is inside Edit; creator attribution is read-only.','microsoft-todo':'Edit title, description and deadline.','microsoft-planner':'Edit title, description, dates, bucket and assignments.','openproject':'Edit fields allowed by this project’s forms and workflow.'};
+  return [labels[item.provider]||'Task',item.remoteId?'ID '+item.remoteId:'',item.listName||item.source||'',item.organizationName||'',item.assigneeName?'Assigned to '+item.assigneeName:'',item.creatorName?'Created by '+item.creatorName:item.creatorId!=null?'Created by resource #'+item.creatorId:'',item.start?'Start: '+hintDate(item.start):'',item.dueDate||item.due?'Due: '+hintDate(item.dueDate||item.due):'',item.description?String(item.description).slice(0,500):'',editable?(edits[item.provider]||'Use Edit to change supported fields.')+(item.provider==='autotask-tickets'?' Use Update ticket; the title is not a direct-edit control.':' Use the Edit button; the title is not a direct-edit control.'):'Read-only source; editing is not available in this panel.'].filter(Boolean).join('\n');
 }
 module.exports={fieldHint,actionHint,hintElement,createHintedSetting,taskHint};
+
+return module.exports;
+})();
+const { AutotaskTicketProvider, ticketStatusIds } = (() => {
+const module = { exports: {} };
+'use strict';
+/**= Version 0.9.0-alpha.2. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
+function ticketId(value,allowZero=false){if(!new RegExp(allowZero?'^(0|[1-9]\\d*)$':'^[1-9]\\d*$').test(String(value))||!Number.isSafeInteger(Number(value)))throw new Error('Enter a valid numeric Autotask ID.');return Number(value);}
+function ticketStatusIds(value=''){return [...new Set(String(value).split(/[\s,;]+/).filter(Boolean).map(v=>String(ticketId(v,true))))];}
+class AutotaskTicketProvider {
+  constructor(source,config={},journal=null,digest=null,log=()=>{}){
+    if(typeof source!=='function')throw new Error('A shared Autotask connection is required.');
+    this.id='autotask-tickets';this.source=source;this.enableWrites=config.enableWrites===true;this.closedStatusIds=ticketStatusIds(config.closedStatusIds);this.journal=journal;this.digest=digest;this.log=log;this.pending=new Set();this.disposed=false;
+    this.capabilities=Object.freeze({read:true,create:false,update:this.enableWrites,complete:false,reopen:false,comment:this.enableWrites});
+  }
+  dispose(){this.disposed=true;}
+  connection(){const source=this.source();if(this.disposed||!source?.credentials)throw new Error('Connect Autotask first, then refresh Tickets.');return source;}
+  assertConnection(source){if(source!==this.connection())throw new Error('Autotask connection changed. Refresh Tickets before continuing.');}
+  async request(path,method='GET',body,readOnly=true,source=this.connection()){
+    this.assertConnection(source);const base=new URL(source.base),url=new URL(path,base);const relative=url.pathname.slice(base.pathname.length);
+    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
+    if(!readOnly&&!((method==='PATCH'&&relative==='Tickets')||(method==='POST'&&/^Tickets\/\d+\/Notes$/.test(relative))))throw new Error('Unsupported ticket write.');
+    const result=await source.request(url.href,method,body,readOnly);this.assertConnection(source);return result;
+  }
+  async fields(entity='Tickets',source=this.connection()){const result=await this.request(entity+'/entityInformation/fields','GET',undefined,true,source);if(!Array.isArray(result.fields))throw new Error('Autotask did not return ticket field metadata.');return result.fields;}
+  choices(fields,name){const field=fields.find(f=>f.name===name);if(!field||!Array.isArray(field.picklistValues))return[];return field.picklistValues.filter(v=>v.isActive===true).map(v=>({id:String(ticketId(v.value,true)),label:String(v.label||'#'+v.value),parentValue:v.parentValue==null?'':String(v.parentValue)}));}
+  async collection(path,filter,source=this.connection()){
+    let url=path,method='POST',body={filter,MaxRecords:500};const rows=[],pages=new Set(),ids=new Set();
+    for(let page=0;page<100;page++){const absolute=new URL(url,source.base).href;if(pages.has(absolute))throw new Error('Repeated ticket pagination URL.');pages.add(absolute);const result=await this.request(url,method,body,true,source);if(!Array.isArray(result.items))throw new Error('Autotask did not return a ticket collection.');for(const item of result.items){const id=ticketId(item.id);if(ids.has(id))throw new Error('Repeated ticket/note ID in pagination.');ids.add(id);rows.push(item);}if(!result.pageDetails?.nextPageUrl)return rows;url=result.pageDetails.nextPageUrl;method='GET';body=undefined;}
+    throw new Error('Ticket pagination limit reached; incomplete data was not shown.');
+  }
+  normalize(raw,fields=[]){const id=ticketId(raw.id),status=String(ticketId(raw.status,true)),label=name=>this.choices(fields,name).find(v=>v.id===String(raw[name]))?.label||`${name} #${raw[name]??'unknown'}`;
+    return{provider:this.id,remoteId:String(id),ticketNumber:raw.ticketNumber||String(id),title:raw.title||'',description:raw.description||'',companyId:raw.companyID,assigneeId:raw.assignedResourceID,creatorId:raw.creatorResourceID,due:raw.dueDateTime,completed:this.closedStatusIds.length?this.closedStatusIds.includes(status):!!raw.completedDate,statusId:status,statusName:label('status'),priorityId:String(raw.priority??''),priorityName:label('priority'),queueName:label('queueID'),completedAt:raw.completedDate,modified:raw.lastActivityDate,raw};}
+  async list(){const source=this.connection(),fields=await this.fields('Tickets',source);const rows=await this.collection('Tickets/query',[{op:'eq',field:'assignedResourceID',value:ticketId(source.resourceId)}],source);const result=[];for(const raw of rows){if(Number(raw.assignedResourceID)!==Number(source.resourceId))throw new Error('Returned ticket is outside the configured primary assignment. Refresh first.');const item=this.normalize(raw,fields);item.organizationName=await source.resolveName('Companies',raw.companyID);item.assigneeName=raw.assignedResourceID==null?'Unassigned':await source.resolveName('Resources',raw.assignedResourceID);this.assertConnection(source);result.push(item);}return result;}
+  async get(id,fields=null,source=this.connection()){id=ticketId(typeof id==='object'?id.remoteId:id);const result=await this.request('Tickets/'+id,'GET',undefined,true,source);if(!result.item||Number(result.item.id)!==id)throw new Error('Ticket identity could not be verified.');return this.normalize(result.item,fields||await this.fields('Tickets',source));}
+  signature(item){const raw=item.raw||{};return JSON.stringify(['id','status','priority','assignedResourceID','assignedResourceRoleID','assignedResourceroleID','queueID','companyID','title','description','dueDateTime','lastActivityDate','lastTrackedModificationDateTime','resolution'].map(k=>[k,raw[k]??null]));}
+  async update(snapshot,changes){if(!this.enableWrites)throw new Error('Enable ticket updates in Autotask Tickets settings.');const id=ticketId(snapshot.remoteId),keys=Object.keys(changes);if(!keys.length||keys.some(k=>!['status','priority'].includes(k)))throw new Error('This release updates ticket status and priority only.');if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);
+    try{const source=this.connection(),fields=await this.fields('Tickets',source),fresh=await this.get(id,fields,source);if(this.signature(fresh)!==this.signature(snapshot))throw new Error('Ticket changed remotely. Refresh before editing.');const patch={id};for(const key of keys){const field=fields.find(f=>f.name===key),value=ticketId(changes[key],true);if(field?.isReadOnly!==false||!this.choices(fields,key).some(v=>v.id===String(value)))throw new Error('Choose an active, writable ticket '+key+'.');if(Number(fresh.raw[key])!==value)patch[key]=value;}if(Object.keys(patch).length===1)return fresh;
+      await this.request('Tickets','PATCH',patch,false,source);const checked=await this.get(id,fields,source);for(const key of Object.keys(patch).filter(k=>k!=='id'))if(Number(checked.raw[key])!==patch[key])throw new Error('Ticket update readback differs. Inspect Autotask and refresh before retrying.');this.log({event:'autotask.ticket-update-verified'});return checked;
+    }finally{this.pending.delete(id);}
+  }
+  async notes(id){const source=this.connection(),ticketID=ticketId(typeof id==='object'?id.remoteId:id);await this.get(ticketID,null,source);const rows=await this.collection('TicketNotes/query',[{op:'eq',field:'ticketID',value:ticketID}],source);if(rows.some(n=>Number(n.ticketID)!==ticketID))throw new Error('Autotask returned a note from another ticket.');return rows.sort((a,b)=>String(b.createDateTime||'').localeCompare(String(a.createDateTime||''))||b.id-a.id);}
+  async loadJournal(){if(!this.journal||typeof this.digest!=='function')throw new Error('Ticket note journal is unavailable.');const raw=await this.journal.read();let value={schemaVersion:1,records:{}};if(raw){try{value=JSON.parse(raw);}catch{throw new Error('Ticket note journal is not valid JSON. Restore it before writing notes.');}}if(value.schemaVersion!==1||!value.records||typeof value.records!=='object'||Array.isArray(value.records))throw new Error('Unsupported ticket note journal.');return{raw,value};}
+  async saveJournal(loaded){const next=JSON.stringify(loaded.value,null,2)+'\n';await this.journal.write(next,loaded.raw);loaded.raw=next;}
+  noteHash(payload){const hash=this.digest(JSON.stringify([ticketId(payload.ticketID),String(payload.title||'').trim(),String(payload.description||'').replace(/\r\n?/g,'\n'),ticketId(payload.noteType,true),ticketId(payload.publish,true)]));if(!/^[a-f0-9]{64}$/.test(hash))throw new Error('Invalid ticket-note fingerprint.');return hash;}
+  async noteState(id){const source=this.connection(),loaded=await this.loadJournal();return loaded.value.records[source.base+'#'+ticketId(id)]||null;}
+  async addNote(snapshot,values){if(!this.enableWrites)throw new Error('Enable ticket updates before adding notes.');const id=ticketId(snapshot.remoteId);if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);let loaded,key,record,submitted=false;
+    try{const source=this.connection(),fields=await this.fields('TicketNotes',source);await this.get(id,null,source);const payload={ticketID:id};for(const [name,max]of [['title',250],['description',32000]]){const field=fields.find(f=>f.name===name);if(field?.isReadOnly!==false||typeof values[name]!=='string'||!values[name].trim()||values[name].length>Math.min(max,Number(field.length)||max))throw new Error('Enter a valid note '+name+'.');payload[name]=values[name];}for(const name of ['noteType','publish']){const field=fields.find(f=>f.name===name);if(field?.isReadOnly!==false||!this.choices(fields,name).some(v=>v.id===String(values[name])))throw new Error('Explicitly choose note type and visibility from current Autotask values.');payload[name]=ticketId(values[name],true);}
+      loaded=await this.loadJournal();key=source.base+'#'+id;const old=loaded.value.records[key];if(old&&old.status!=='verified')throw new Error('An earlier ticket note needs reconciliation. Inspect Autotask; no creation retry is allowed.');record={status:'submitting',ticketID:id,fingerprint:this.noteHash(payload),startedAt:new Date().toISOString()};loaded.value.records[key]=record;await this.saveJournal(loaded);submitted=true;
+      const response=await this.request('Tickets/'+id+'/Notes','POST',payload,false,source);record.noteID=ticketId(response.itemId);await this.saveJournal(loaded);const note=(await this.request('TicketNotes/'+record.noteID,'GET',undefined,true,source)).item;if(!note||Number(note.id)!==record.noteID||this.noteHash(note)!==record.fingerprint)throw new Error('Ticket note creation readback differs. Reconcile before creating another.');record.status='verified';await this.saveJournal(loaded);this.log({event:'autotask.ticket-note-verified'});return note;
+    }catch(e){if(submitted&&record){record.status='needs-review';try{await this.saveJournal(loaded);}catch{}e.message+=' Inspect Autotask before retrying; the note intent remains recorded.';}throw e;}finally{this.pending.delete(id);}
+  }
+  async reconcileNote(ticketID,noteID){const source=this.connection(),id=ticketId(ticketID);if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);try{const loaded=await this.loadJournal(),record=loaded.value.records[source.base+'#'+id];if(!record||record.status==='verified')throw new Error('No unresolved note exists for this ticket.');const requested=ticketId(noteID),note=(await this.request('TicketNotes/'+requested,'GET',undefined,true,source)).item;if(!note||Number(note.id)!==requested||Number(note.ticketID)!==id||this.noteHash(note)!==record.fingerprint)throw new Error('This note does not match the recorded ticket-note intent.');record.noteID=requested;record.status='verified';record.reconciledAt=new Date().toISOString();await this.saveJournal(loaded);}finally{this.pending.delete(id);}}
+}
+module.exports={AutotaskTicketProvider,ticketStatusIds};
 
 return module.exports;
 })();
@@ -1230,13 +1292,14 @@ const Setting = createHintedSetting(HostSetting, setTooltip);
 
 const VIEW = 'autotask-todo-view';
 const GRAPH_VIEW = 'autotask-microsoft-todo-view';
+const TICKET_VIEW = 'task2do-autotask-tickets-view';
 const TXT_VIEW = 'task2do-todotxt-view';
 const MOOVILA_VIEW = 'task2do-moovila-view';
 const OP_VIEW = 'task2do-openproject-view';
 const PLANNER_VIEW = 'task2do-planner-view';
 const SYNC_VIEW = 'task2do-sync-view';
 class ConnectModal extends Modal {
-  constructor(plugin) { super(plugin.app); this.plugin = plugin; }
+  constructor(plugin,onConnected=null) { super(plugin.app); this.plugin = plugin;this.onConnected=onConnected; }
   onOpen() {
     this.contentEl.createEl('h2', { text: 'Connect to Autotask' });
     this.contentEl.createEl('p', { text: 'Remembered credentials use data.json unless you enable the password-encrypted credential vault in settings.' });
@@ -1249,7 +1312,7 @@ class ConnectModal extends Modal {
     new Setting(this.contentEl).addButton(b => b.setButtonText('Connect').setCta().onClick(async () => {
       try {
         await this.plugin.connect(credentials, remember);
-        this.close(); await this.plugin.openView();
+        this.close(); if(typeof this.onConnected==='function')await this.onConnected();else await this.plugin.openView();
       } catch (e) { new Notice(e.message); }
     }));
   }
@@ -1470,7 +1533,7 @@ class ToDoView extends ItemView {
       for (const item of group.items) {
         const urgency = taskUrgency(item);
         const card = target.createDiv({ cls: `autotask-todo-card task2do-${urgency.kind}` });
-        hintElement(card.createEl('strong', { text: `${item.completed ? 'Completed' : 'Open'}${item.provider==='todotxt'?'':' #'+item.remoteId} · Due: ${item.dueDate || formatTaskDate(item.due, item.dueDisplay)}${!item.completed && urgency.label ? ' · ' + urgency.label : ''}` }),`Dates use the local calendar/timezone. ${item.dueDate?/(?:^|\s)endDateTime:/.test(item.rawLine||'')?'The precise source deadline is retained in Details. ':'This task has a date-only deadline. ':''}${provider.capabilities.update?'Use Edit to change supported schedule fields.':'This provider is read-only.'}`,setTooltip);
+        hintElement(card.createEl('strong', { text: `${item.provider==='autotask-tickets'?'Status: '+item.statusName:item.completed ? 'Completed' : 'Open'}${item.provider==='todotxt'?'':' #'+(item.ticketNumber||item.remoteId)} · Due: ${item.dueDate || formatTaskDate(item.due, item.dueDisplay)}${!item.completed && urgency.label ? ' · ' + urgency.label : ''}` }),`Dates use the local calendar/timezone. ${item.dueDate?/(?:^|\s)endDateTime:/.test(item.rawLine||'')?'The precise source deadline is retained in Details. ':'This task has a date-only deadline. ':''}${provider.capabilities.update?'Use Edit to change supported schedule fields.':'This provider is read-only.'}`,setTooltip);
         if (item.provider === 'todotxt') this.renderTodoTxt(card, item);
         else {
         if (item.title) hintElement(card.createEl('p', { text: item.title, cls: 'autotask-todo-title' }),taskHint(item,provider.capabilities.update),setTooltip);
@@ -1508,6 +1571,35 @@ class ToDoView extends ItemView {
       if (this.plugin.settings.publishIndex) { try { await this.plugin.publishTasks(provider.id, items); } catch (e) { el.createEl('p', { text: 'Index: ' + e.message }); } }
     } catch (e) { if (generation === this.generation) status.setText(e.message); }
   }
+}
+/**= Ticket changes never reuse the CRM To-Do completion or description writer. */
+class AutotaskTicketUpdateModal extends Modal {
+  constructor(view,item){super(view.app);this.view=view;this.item=item;this.provider=view.currentProvider();this.closed=false;}
+  onClose(){this.closed=true;this.contentEl.empty();}
+  async onOpen(){const el=this.contentEl;el.createEl('h2',{text:`Update ticket ${this.item.ticketNumber||this.item.remoteId}`});el.createEl('p',{text:'Change status or priority only. Autotask permissions, required fields and workflows still apply. Status changes may trigger tenant workflows.'});const status=el.createEl('p');
+    try{const fields=await this.provider.fields();if(this.closed)return;const selected={status:this.item.statusId,priority:this.item.priorityId};for(const name of ['status','priority'])new Setting(el).setName(name==='status'?'Ticket status':'Ticket priority').addDropdown(d=>{const choices=this.provider.choices(fields,name);d.addOption(selected[name],this.item[name+'Name']||'Current value');for(const choice of choices)if(choice.id!==selected[name])d.addOption(choice.id,choice.label);d.setValue(selected[name]).onChange(v=>selected[name]=v);});
+      new Setting(el).addButton(b=>b.setButtonText('Save ticket changes').setCta().onClick(async()=>{b.setDisabled(true);try{if(this.provider!==this.view.currentProvider())throw new Error('Ticket configuration changed. Refresh first.');const changes={};if(selected.status!==this.item.statusId)changes.status=selected.status;if(selected.priority!==this.item.priorityId)changes.priority=selected.priority;if(!Object.keys(changes).length){status.setText('No changes to save.');return;}await this.provider.update(this.item,changes);this.close();await this.view.refresh();}catch(e){if(!this.closed)status.setText(e.message);}finally{b.setDisabled(false);}}));
+    }catch(e){if(!this.closed)status.setText(e.message);}
+  }
+}
+class AutotaskTicketNotesModal extends Modal {
+  constructor(view,item){super(view.app);this.view=view;this.item=item;this.provider=view.currentProvider();this.closed=false;}
+  onClose(){this.closed=true;this.contentEl.empty();}
+  async onOpen(){const el=this.contentEl;el.createEl('h2',{text:`Ticket notes: ${this.item.ticketNumber||this.item.remoteId}`});const status=el.createEl('p',{text:'Loading notes…'});try{
+    const notes=await this.provider.notes(this.item.remoteId),fields=await this.provider.fields('TicketNotes').catch(()=>[]);if(this.closed)return;status.setText(`${notes.length} notes. Visibility labels reflect Autotask; external visibility and workflows must be reviewed before submission.`);
+    for(const note of notes){const card=el.createDiv({cls:'autotask-todo-card'});card.createEl('strong',{text:`Note #${note.id} · ${formatTaskDate(note.createDateTime)}`});card.createEl('p',{text:note.title||'(Untitled note)'});card.createEl('small',{text:'Visibility: '+(this.provider.choices(fields,'publish').find(v=>v.id===String(note.publish))?.label||'#'+note.publish)});card.createEl('p',{text:note.description||''});}
+    if(!this.provider.enableWrites)return;
+    const journal=await this.provider.noteState(this.item.remoteId);if(this.closed)return;if(journal&&journal.status!=='verified'){el.createEl('p',{text:`A note write needs review${journal.noteID?' (accepted ID #'+journal.noteID+')':''}. Inspect Autotask and reconcile the matching note; another creation is blocked.`});let noteID=journal.noteID?String(journal.noteID):'';new Setting(el).setName('Existing ticket note ID').addText(t=>t.setValue(noteID).onChange(v=>noteID=v));new Setting(el).addButton(b=>b.setButtonText('Reconcile ticket note').onClick(async()=>{b.setDisabled(true);try{await this.provider.reconcileNote(this.item.remoteId,noteID);this.close();new AutotaskTicketNotesModal(this.view,this.item).open();}catch(e){status.setText(e.message);b.setDisabled(false);}}));return;}
+    const values={title:'',description:'',noteType:'',publish:''};new Setting(el).setName('Note title').addText(t=>t.onChange(v=>values.title=v));new Setting(el).setName('Note text').addTextArea(t=>t.onChange(v=>values.description=v));for(const [name,label]of [['noteType','Note type'],['publish','Note visibility']])new Setting(el).setName(label).addDropdown(d=>{d.addOption('','Choose explicitly');for(const choice of this.provider.choices(fields,name))d.addOption(choice.id,choice.label);d.onChange(v=>values[name]=v);});
+    let submitted=false;new Setting(el).addButton(b=>b.setButtonText('Add ticket note').setCta().onClick(async()=>{b.setDisabled(true);try{if(this.provider!==this.view.currentProvider())throw new Error('Ticket connection changed. Reopen notes.');submitted=true;await this.provider.addNote(this.item,{...values});this.close();new AutotaskTicketNotesModal(this.view,this.item).open();}catch(e){if(!this.closed)status.setText(e.message+' Close and reopen notes to check the recorded outcome.');}finally{if(submitted)try{const record=await this.provider.noteState(this.item.remoteId);submitted=!!record&&record.status!=='verified';}catch{}b.setDisabled(submitted);}}));
+  }catch(e){if(!this.closed)status.setText(e.message);}}
+}
+class AutotaskTicketsView extends ToDoView {
+  getViewType(){return TICKET_VIEW;}getDisplayText(){return 'Task2Do: Autotask Tickets';}
+  currentProvider(){return this.plugin.registry.get('autotask-tickets');}async loadItems(provider){return provider.list();}
+  toolbar(el){this.panelToolbar(el).addButton(b=>{b.setButtonText('New task').setDisabled(true);b.buttonEl?.setAttribute('title','Ticket creation is deferred; use Autotask to create tickets.');}).addButton(b=>b.setButtonText('Refresh').onClick(()=>this.refresh())).addButton(b=>b.setButtonText('Connect').onClick(()=>new ConnectModal(this.plugin,()=>this.plugin.openTicketsView()).open()));}
+  renderItems(items,el,provider){const controls=new Setting(el),holder=el.createDiv();const pref=()=>this.plugin.settings.viewPreferences[TICKET_VIEW];const draw=()=>{holder.empty();const p=pref();super.renderItems(items.filter(item=>(!p.ticketStatus||item.statusId===p.ticketStatus)&&(!p.ticketPriority||item.priorityId===p.ticketPriority)&&(!p.ticketQueue||String(item.raw?.queueID??'')===p.ticketQueue)),holder,provider);};for(const [key,label,idField,nameField]of [['ticketStatus','Status','statusId','statusName'],['ticketPriority','Priority','priorityId','priorityName'],['ticketQueue','Queue','queueID','queueName']])controls.addDropdown(d=>{d.addOption('','All '+label.toLowerCase()+' values');const seen=new Set();for(const item of items){const id=key==='ticketQueue'?String(item.raw?.queueID??''):item[idField];if(id&&!seen.has(id)){d.addOption(id,item[nameField]||id);seen.add(id);}}d.setValue(pref()[key]||'').onChange(async v=>{pref()[key]=v;draw();try{await this.plugin.persist();}catch(e){new Notice(e.message);}});});draw();}
+  taskActions(card,item,provider){card.createEl('small',{text:[item.organizationName,item.assigneeName,item.queueName].filter(Boolean).join(' · ')});hintElement(card.createEl('small',{text:'Ticket status: '+item.statusName+' · Priority: '+item.priorityName}),`Status: ${item.statusName} (#${item.statusId})\nPriority: ${item.priorityName} (#${item.priorityId})\nQueue: ${item.queueName} (#${item.raw?.queueID??'unassigned'})\nUse Update ticket to change status or priority.`,setTooltip);const controls=new Setting(card);if(provider.enableWrites)controls.addButton(b=>b.setButtonText('Update ticket').onClick(()=>new AutotaskTicketUpdateModal(this,item).open()));controls.addButton(b=>b.setButtonText('Ticket notes').onClick(()=>new AutotaskTicketNotesModal(this,item).open()));}
 }
 class MicrosoftSignInModal extends Modal {
   constructor(plugin) { super(plugin.app); this.plugin = plugin; this.cancelled = false; this.auth = null; }
@@ -1776,6 +1868,7 @@ class Task2DoLauncherModal extends Modal {
     this.contentEl.createEl('h2', { text: 'Task2Do' });
     for (const [label, open] of [
       ['Autotask Tasks', () => this.plugin.openView()],
+      ['Autotask Tickets', () => this.plugin.openTicketsView()],
       ['Microsoft To Do Tasks', () => this.plugin.openMicrosoftView()],
       ['Microsoft Planner Tasks', () => this.plugin.openPlannerView()],
       ['todo.txt Tasks', () => this.plugin.openTodoTxtView()],
@@ -1884,7 +1977,7 @@ class CredentialVaultModal extends Modal {
   constructor(plugin,enable=false){super(plugin.app);this.plugin=plugin;this.enable=enable;}
   onClose(){this.contentEl.empty();}
   onOpen(){const el=this.contentEl;el.createEl('h2',{text:this.enable?'Encrypt Task2Do credentials':'Unlock Task2Do credentials'});el.createEl('p',{text:'The master passphrase is not saved. Unlock once after startup or a plugin reload. Keep the encrypted vault and passphrase when moving machines.'});let password='',confirmation='';new Setting(el).setName('Master passphrase').addText(t=>{t.inputEl.type='password';t.onChange(v=>password=v);});if(this.enable)new Setting(el).setName('Confirm passphrase').addText(t=>{t.inputEl.type='password';t.onChange(v=>confirmation=v);});const status=el.createEl('p');new Setting(el).addButton(b=>b.setButtonText(this.enable?'Encrypt and migrate':'Unlock').setCta().onClick(async()=>{b.setDisabled(true);try{if(this.enable&&password!==confirmation)throw new Error('Passphrases do not match.');const adapter=this.plugin.app.vault.adapter,path=this.plugin.credentialVaultPath();let envelope=null;if(!this.enable){if(!await adapter.exists(path))throw new Error('Encrypted credential file is missing. Restore credentials.enc from this vault backup.');envelope=JSON.parse(await adapter.read(path));}const opened=await PasswordCredentialVault.open(password,envelope);password='';confirmation='';this.plugin._credentialVault?.dispose();this.plugin._credentialVault=opened.vault;
-      if(this.enable){this.plugin.settings.encryptCredentials=true;try{await this.plugin.persist();}catch(e){this.plugin.settings.encryptCredentials=false;throw e;}}else{const secrets=opened.secrets;if(secrets.savedCredentials)this.plugin.settings.savedCredentials=secrets.savedCredentials;if(secrets.microsoftTokens)this.plugin.settings.microsoft.tokens=secrets.microsoftTokens;for(const id of ['openproject','moovila'])if(secrets[id])this.plugin.settings[id].token=secrets[id];this.plugin.restoreCredentialSessions();for(const type of [VIEW,GRAPH_VIEW,PLANNER_VIEW,OP_VIEW,MOOVILA_VIEW])for(const leaf of this.plugin.app.workspace.getLeavesOfType(type))leaf.view.refresh();}new Notice('Credential vault unlocked.');this.close();}catch(e){status.setText(e.message);}finally{b.setDisabled(false);}}));}
+      if(this.enable){this.plugin.settings.encryptCredentials=true;try{await this.plugin.persist();}catch(e){this.plugin.settings.encryptCredentials=false;throw e;}}else{const secrets=opened.secrets;if(secrets.savedCredentials)this.plugin.settings.savedCredentials=secrets.savedCredentials;if(secrets.microsoftTokens)this.plugin.settings.microsoft.tokens=secrets.microsoftTokens;for(const id of ['openproject','moovila'])if(secrets[id])this.plugin.settings[id].token=secrets[id];this.plugin.restoreCredentialSessions();for(const type of [VIEW,GRAPH_VIEW,PLANNER_VIEW,OP_VIEW,MOOVILA_VIEW,TICKET_VIEW])for(const leaf of this.plugin.app.workspace.getLeavesOfType(type))leaf.view.refresh();}new Notice('Credential vault unlocked.');this.close();}catch(e){status.setText(e.message);}finally{b.setDisabled(false);}}));}
 }
 
 class AutotaskTextNoteModal extends Modal {
@@ -1902,13 +1995,13 @@ class MicrosoftAttachmentsModal extends Modal {
   }
 }
 
-/**= Version 0.8.0-alpha.2. Independent settings panes retain existing persisted keys. */
+/**= Version 0.9.0-alpha.2. Independent settings panes retain existing persisted keys. */
 class Settings extends PluginSettingTab {
   constructor(plugin) { super(plugin.app, plugin); this.plugin = plugin; this.activePane='general'; }
   display() {
     const el=this.containerEl;el.empty();el.createEl('h2',{text:'Task2Do Settings'});
-    el.createEl('p',{text:`Version ${this.plugin.manifest?.version || '0.8.0-alpha.2'}`,cls:'task2do-settings-version'});
-    const panes=[['general','General'],['todotxt','todo.txt'],['autotask','Autotask'],['microsoft','Microsoft To Do'],['planner','Microsoft Planner'],['openproject','OpenProject'],['moovila','Moovila']];
+    el.createEl('p',{text:`Version ${this.plugin.manifest?.version || '0.9.0-alpha.2'}`,cls:'task2do-settings-version'});
+    const panes=[['general','General'],['todotxt','todo.txt'],['autotask','Autotask'],['tickets','Autotask Tickets'],['microsoft','Microsoft To Do'],['planner','Microsoft Planner'],['openproject','OpenProject'],['moovila','Moovila']];
     if(!panes.some(([id])=>id===this.activePane))this.activePane='general';
     const nav=new Setting(el);nav.settingEl.addClass?.('task2do-settings-nav');
     for(const [id,label]of panes)nav.addButton(b=>{b.setButtonText(label);if(id===this.activePane)b.setCta();b.buttonEl?.setAttribute('aria-pressed',String(id===this.activePane));b.onClick(()=>{this.activePane=id;this.display();});});
@@ -1921,7 +2014,7 @@ class Settings extends PluginSettingTab {
     new Setting(el).setName('Publish searchable Markdown indexes').setDesc('One-way snapshots on sidebar refresh. Checkbox edits do not update source tasks. Enable, then refresh each provider.').addToggle(t => t.setValue(this.plugin.settings.publishIndex).onChange(async value => { this.plugin.settings.publishIndex = value; await this.plugin.persist(); }));
     new Setting(el).setName('Index folder').addText(t => t.setValue(this.plugin.settings.indexFolder).onChange(async value => { try { vaultPath(value); this.plugin.settings.indexFolder = value; await this.plugin.persist(); } catch (e) { new Notice(e.message); } }));
     el.createEl('h3', { text: 'Task sync' });
-    new Setting(el).setName('Sync catalog/state folder').addText(t=>t.setValue(this.plugin.settings.sync.folder).onChange(async value=>{try{vaultPath(value);this.plugin.settings.sync.folder=value;this.plugin._syncEngine=null;await this.plugin.persist();}catch(e){new Notice(e.message);}}));
+    new Setting(el).setName('Sync catalog/state folder').addText(t=>t.setValue(this.plugin.settings.sync.folder).onChange(async value=>{try{vaultPath(value);this.plugin.settings.sync.folder=value;this.plugin._syncEngine=null;await this.plugin.persist();this.plugin.installTickets();}catch(e){new Notice(e.message);}}));
     new Setting(el).setName('Automatic sync').setDesc('Runs while Obsidian is open. Pulls source and destination changes; never creates a destination task without a reviewed push.').addToggle(t=>t.setValue(this.plugin.settings.sync.automatic).onChange(async value=>{this.plugin.settings.sync.automatic=value;await this.plugin.persist();this.plugin.startSyncTimer();}));
     new Setting(el).setName('Write updates to already-bound tasks').setDesc('Opt in to bidirectional title/description/deadline/completion updates. Conflicts or uncertain writes stop the affected operation. Autotask writes must also be enabled. Deletions are never propagated.').addToggle(t=>t.setValue(this.plugin.settings.sync.writeExisting).onChange(async value=>{this.plugin.settings.sync.writeExisting=value;await this.plugin.persist();}));
     new Setting(el).setName('Sync interval (minutes)').addText(t=>t.setValue(String(this.plugin.settings.sync.intervalMinutes)).onChange(async value=>{if(!/^\d+$/.test(value)||Number(value)<5||Number(value)>1440){new Notice('Use 5–1440 minutes.');return;}this.plugin.settings.sync.intervalMinutes=Number(value);await this.plugin.persist();this.plugin.startSyncTimer();}));
@@ -1967,6 +2060,11 @@ class Settings extends PluginSettingTab {
     }));
     new Setting(el).addButton(b=>b.setButtonText('Connect Autotask').onClick(()=>new ConnectModal(this.plugin).open())).addButton(b=>b.setButtonText('Open Autotask tasks').onClick(()=>this.plugin.openView()));
   }
+  tickets(el){el.createEl('p',{text:'Service Desk Tickets share the Autotask connection and Assigned resource ID. CRM To-Dos remain a separate provider. This release retrieves primary assignments; ticket creation, reassignment, time entries and cross-sync are deferred.'});
+    new Setting(el).setName('Enable ticket updates').setDesc('Separately enable explicit status/priority changes and native ticket notes. Autotask workflows and API permissions apply.').addToggle(t=>t.setValue(this.plugin.settings.autotaskTickets.enableWrites).onChange(async value=>{const before=this.plugin.settings.autotaskTickets.enableWrites;try{this.plugin.settings.autotaskTickets.enableWrites=value;await this.plugin.persist();this.plugin.installTickets();for(const leaf of this.app.workspace.getLeavesOfType(TICKET_VIEW))leaf.view.refresh();}catch(e){this.plugin.settings.autotaskTickets.enableWrites=before;new Notice(e.message);}}));
+    new Setting(el).setName('Completed ticket status IDs').setDesc('Optional comma-separated status IDs classified as completed by this panel. Blank uses completedDate. Hover ticket status details to see IDs. No IDs or translated labels are assumed.').addText(t=>t.setValue(this.plugin.settings.autotaskTickets.closedStatusIds).onChange(async value=>{try{ticketStatusIds(value);this.plugin.settings.autotaskTickets.closedStatusIds=value;await this.plugin.persist();this.plugin.installTickets();for(const leaf of this.app.workspace.getLeavesOfType(TICKET_VIEW))leaf.view.refresh();}catch(e){new Notice(e.message);}}));
+    new Setting(el).addButton(b=>b.setButtonText('Connect Autotask').onClick(()=>new ConnectModal(this.plugin,()=>this.plugin.openTicketsView()).open())).addButton(b=>b.setButtonText('Open Autotask tickets').onClick(()=>this.plugin.openTicketsView()));
+  }
   microsoft(el) {
     for (const [key, label] of [['clientId', 'Entra application client ID'], ['tenant', 'Tenant ID/domain (or common)']]) new Setting(el).setName(label).addText(t => t.setValue(this.plugin.settings.microsoft[key]).onChange(async value => {
       this.plugin.microsoftEpoch++; this.plugin.registry.remove('microsoft-planner');this.plugin.registry.remove('microsoft-todo');
@@ -1997,11 +2095,13 @@ module.exports = class Task2DoPlugin extends Plugin {
   async onload() {
     const saved = await this.loadData();
     this.settings = { baseUrl: typeof saved?.baseUrl === 'string' ? saved.baseUrl : '', resourceId: typeof saved?.resourceId === 'string' ? saved.resourceId : '', creatorResourceId: typeof saved?.creatorResourceId === 'string' ? saved.creatorResourceId : '', apiResourceId: typeof saved?.apiResourceId === 'string' ? saved.apiResourceId : '', enableWrites: saved?.enableWrites === true, rememberCredentials: saved?.rememberCredentials === true };
+    this.settings.autotaskTickets={enableWrites:saved?.autotaskTickets?.enableWrites===true,closedStatusIds:typeof saved?.autotaskTickets?.closedStatusIds==='string'?saved.autotaskTickets.closedStatusIds:''};
+    try{ticketStatusIds(this.settings.autotaskTickets.closedStatusIds);}catch{this.settings.autotaskTickets.closedStatusIds='';new Notice('Invalid completed ticket status IDs were ignored. Check Autotask Tickets settings.');}
     this.settings.encryptCredentials = saved?.encryptCredentials === true;
     this.settings.viewPreferences = {};
-    for (const key of [VIEW, GRAPH_VIEW, TXT_VIEW, PLANNER_VIEW, OP_VIEW, MOOVILA_VIEW]) {
+    for (const key of [VIEW, GRAPH_VIEW, TXT_VIEW, PLANNER_VIEW, OP_VIEW, MOOVILA_VIEW, TICKET_VIEW]) {
       const pref = saved?.viewPreferences?.[key];
-      this.settings.viewPreferences[key] = { state: ['open', 'completed', 'all'].includes(pref?.state) ? pref.state : 'open', sort: ['due-asc', 'due-desc', 'none'].includes(pref?.sort) ? pref.sort : 'due-asc', search: typeof pref?.search === 'string' ? pref.search : '', ...(key===TXT_VIEW?{localView:['inbox','today','upcoming','completed','all'].includes(pref?.localView)?pref.localView:'inbox'}:{}), ...(key === VIEW ? { scope: ['my', 'delegated', 'all'].includes(pref?.scope) ? pref.scope : 'all' } : {}) };
+      this.settings.viewPreferences[key] = { state: ['open', 'completed', 'all'].includes(pref?.state) ? pref.state : 'open', sort: ['due-asc', 'due-desc', 'none'].includes(pref?.sort) ? pref.sort : 'due-asc', search: typeof pref?.search === 'string' ? pref.search : '', ...(key===TICKET_VIEW?{ticketStatus:typeof pref?.ticketStatus==='string'?pref.ticketStatus:'',ticketPriority:typeof pref?.ticketPriority==='string'?pref.ticketPriority:'',ticketQueue:typeof pref?.ticketQueue==='string'?pref.ticketQueue:''}:{}), ...(key===TXT_VIEW?{localView:['inbox','today','upcoming','completed','all'].includes(pref?.localView)?pref.localView:'inbox'}:{}), ...(key === VIEW ? { scope: ['my', 'delegated', 'all'].includes(pref?.scope) ? pref.scope : 'all' } : {}) };
     }
     this.settings.microsoft = { clientId: typeof saved?.microsoft?.clientId === 'string' ? saved.microsoft.clientId : '', tenant: typeof saved?.microsoft?.tenant === 'string' ? saved.microsoft.tenant : 'common', remember: saved?.microsoft?.remember === true };
     if (this.settings.microsoft.remember && saved?.microsoft?.tokens) this.settings.microsoft.tokens = saved.microsoft.tokens;
@@ -2009,10 +2109,12 @@ module.exports = class Task2DoPlugin extends Plugin {
     this.provider = null;
     this.registry = new ProviderRegistry(); this.microsoftEpoch = 0; this.unloaded = false; this.saveChain = Promise.resolve();
     this.registerView(VIEW, leaf => new ToDoView(leaf, this));
+    this.registerView(TICKET_VIEW,leaf=>new AutotaskTicketsView(leaf,this));this.addCommand({id:'open-autotask-tickets',name:'Open Autotask Tickets',callback:()=>this.openTicketsView()});
     this.registerView(GRAPH_VIEW, leaf => new MicrosoftToDoView(leaf, this));
     this.settings.planner = { planIds: typeof saved?.planner?.planIds === 'string' ? saved.planner.planIds : '' };
     this.registerView(PLANNER_VIEW, leaf => new PlannerView(leaf, this));
     this.settings.sync = { folder: typeof saved?.sync?.folder === 'string' ? saved.sync.folder : 'Task2Do', automatic: saved?.sync?.automatic === true, writeExisting: saved?.sync?.writeExisting === true, intervalMinutes: Math.max(5,Math.min(1440,Number(saved?.sync?.intervalMinutes)||15)) };
+    this.installTickets();
     this.registerView(SYNC_VIEW, leaf => new TaskSyncView(leaf, this));
     this.addCommand({id:'open-task-sync',name:'Open task sync',callback:()=>this.openSyncView()});
     this.startSyncTimer();
@@ -2047,7 +2149,7 @@ module.exports = class Task2DoPlugin extends Plugin {
     this.addCommand({ id: 'open-autotask-todos', name: 'Open Autotask Tasks (assigned and created)', callback: () => this.openView() });
     this.addCommand({ id: 'inspect-autotask-task', name: 'Check Autotask To-Do by ID', callback: () => new AutotaskInspectModal(this).open() });
     this.addCommand({ id: 'connect-autotask', name: 'Connect for this session', callback: () => new ConnectModal(this).open() });
-    this.addCommand({ id: 'disconnect-autotask', name: 'Disconnect', callback: () => { this.registry.remove('autotask-todo'); this.provider = null; for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) leaf.view.refresh(); } });
+    this.addCommand({ id: 'disconnect-autotask', name: 'Disconnect', callback: () => { this.registry.remove('autotask-todo'); this.provider = null; for (const leaf of [...this.app.workspace.getLeavesOfType(VIEW),...this.app.workspace.getLeavesOfType(TICKET_VIEW)]) leaf.view.refresh(); } });
     this.addCommand({ id: 'open-microsoft-todos', name: 'Open Microsoft To Do Tasks', callback: () => this.openMicrosoftView() });
     this.addCommand({ id: 'signin-microsoft-todo', name: 'Sign in to Microsoft To Do', callback: () => new MicrosoftSignInModal(this).open() });
     this.addCommand({ id: 'create-microsoft-task', name: 'Create Microsoft To Do task', callback: () => new MicrosoftTaskModal(this, null).open() });
@@ -2068,7 +2170,7 @@ module.exports = class Task2DoPlugin extends Plugin {
     this.app?.workspace?.onLayoutReady?.(() => {
       if (this.unloaded) return;
       if(this.settings.encryptCredentials&&!this._credentialVault)new CredentialVaultModal(this).open();
-      for (const type of [VIEW, GRAPH_VIEW, TXT_VIEW, PLANNER_VIEW, OP_VIEW, MOOVILA_VIEW]) for (const leaf of this.app.workspace.getLeavesOfType(type)) leaf.view.refresh();
+      for (const type of [VIEW, GRAPH_VIEW, TXT_VIEW, PLANNER_VIEW, OP_VIEW, MOOVILA_VIEW, TICKET_VIEW]) for (const leaf of this.app.workspace.getLeavesOfType(type)) leaf.view.refresh();
     });
   }
   /**= Serialize settings writes so token refresh and UI preferences do not race on disk. */
@@ -2136,6 +2238,8 @@ module.exports = class Task2DoPlugin extends Plugin {
     const type=id==='moovila'?MOOVILA_VIEW:OP_VIEW;let leaf=this.app.workspace.getLeavesOfType(type)[0];
     if(!leaf){leaf=this.app.workspace.getRightLeaf(false);if(!leaf)throw new Error('Unable to open sidebar.');await leaf.setViewState({type,active:true});}else await leaf.view.refresh();await this.app.workspace.revealLeaf(leaf);
   }
+  installTickets(){const folder=this.settings.sync.folder;const storage=()=>vaultStorage(this.app.vault,vaultPath(folder)+'/ticket-note-journal.json');const journal={read:()=>storage().read(),write:(next,expected)=>storage().write(next,expected)};this.registry.register(new AutotaskTicketProvider(()=>this.provider,this.settings.autotaskTickets,journal,text=>require('node:crypto').createHash('sha256').update(text).digest('hex'),entry=>console.info('[Task2Do]',JSON.stringify(entry))));}
+  async openTicketsView(){let leaf=this.app.workspace.getLeavesOfType(TICKET_VIEW)[0];if(!leaf){leaf=this.app.workspace.getRightLeaf(false);if(!leaf)throw new Error('Unable to open ticket panel.');await leaf.setViewState({type:TICKET_VIEW,active:true});}else await leaf.view.refresh();await this.app.workspace.revealLeaf(leaf);}
   syncEngine(){
     const todo=this.registry.get('todotxt'),folder=vaultPath(this.settings.sync.folder);
     if(!this._syncEngine||this._syncEngine.context.todo!==todo||this._syncEngine.folder!==folder){

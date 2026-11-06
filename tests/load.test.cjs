@@ -27,7 +27,7 @@ test('release loads with only the Obsidian host module available', async () => {
   assert.deepEqual(imports, ['obsidian']);
   const plugin = new context.module.exports();
   await plugin.onload();
-  assert.equal(commands.length, 22);
+  assert.equal(commands.length, 23);
   assert.equal(plugin.provider, null);
   plugin.onunload();
 });

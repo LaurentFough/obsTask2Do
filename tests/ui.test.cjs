@@ -58,10 +58,10 @@ async function harness(saved = {}, app = null) {
 }
 test('Autotask sidebar displays names, filters immediately and persists search', async () => {
   const { plugin, controls, views, writes } = await harness();
-  plugin.provider = { capabilities: { update: false }, list: async () => [{ provider: 'autotask-todo', remoteId: '1', description: 'Open Review', completed: false, organizationName: 'Acme', assigneeName: 'El' }, { provider: 'autotask-todo', remoteId: '2', description: 'Closed Review', completed: true, organizationName: 'Acme', assigneeName: 'El' }], enrich: async items => items };
+  plugin.provider = { capabilities: { update: false }, list: async () => [{ provider: 'autotask-todo', remoteId: '1', description: 'Open Review', completed: false, organizationName: 'Acme', assigneeName: 'LaurentFough' }, { provider: 'autotask-todo', remoteId: '2', description: 'Closed Review', completed: true, organizationName: 'Acme', assigneeName: 'LaurentFough' }], enrich: async items => items };
   const view = views.get('autotask-todo-view')({ app: plugin.app }); await view.onOpen();
   assert.ok(view.contentEl.allText().includes('Open Review')); assert.ok(!view.contentEl.allText().includes('Closed Review'));
-  assert.ok(view.contentEl.allText().includes('Acme · El'));
+  assert.ok(view.contentEl.allText().includes('Acme · LaurentFough'));
   controls.find(c => c.type === 'dropdown' && c.options.completed).change('completed'); await plugin.saveChain;
   assert.ok(view.contentEl.allText().includes('Closed Review')); assert.ok(!view.contentEl.allText().includes('Open Review'));
   const search = controls.find(c => c.type === 'text'); search.change('missing'); await plugin.saveChain;
@@ -87,8 +87,8 @@ test('saved Graph session restores alongside remembered Autotask credentials', a
 });
 test('Autotask edit provides named assignment and minute-resolution calendar controls', async () => {
   const { plugin, controls, views, modals } = await harness(); const writes = [];
-  const item = { provider: 'autotask-todo', remoteId: '1', description: 'Review', completed: false, assigneeId: 123, companyId: 7, organizationName: 'Acme', assigneeName: 'El Example', start: '2026-10-14T16:30:45.123Z', due: '2026-10-14T17:30:45.123Z' };
-  plugin.provider = { capabilities: { update: true }, list: async () => [item], enrich: async items => items, listResources: async () => [{ id: '123', label: 'El Example' }, { id: '456', label: 'Alice Smith' }], update: async (snapshot, changes) => writes.push(changes) };
+  const item = { provider: 'autotask-todo', remoteId: '1', description: 'Review', completed: false, assigneeId: 123, companyId: 7, organizationName: 'Acme', assigneeName: 'LaurentFough Example', start: '2026-10-14T16:30:45.123Z', due: '2026-10-14T17:30:45.123Z' };
+  plugin.provider = { capabilities: { update: true }, list: async () => [item], enrich: async items => items, listResources: async () => [{ id: '123', label: 'LaurentFough Example' }, { id: '456', label: 'Alice Smith' }], update: async (snapshot, changes) => writes.push(changes) };
   const view = views.get('autotask-todo-view')({ app: plugin.app }); await view.onOpen();
   const offset = controls.length; controls.find(c => c.text === 'Edit').click(); await modals[0].openPromise; await new Promise(resolve => setImmediate(resolve));
   const editorControls = controls.slice(offset), calendars = editorControls.filter(c => c.inputEl.type === 'datetime-local');
@@ -100,8 +100,8 @@ test('Autotask edit provides named assignment and minute-resolution calendar con
 });
 test('changing calendar timezone does not generate a remote date edit', async () => {
   const { plugin, controls, views, modals } = await harness(); let writes = 0;
-  const item = { provider: 'autotask-todo', remoteId: '1', description: 'Review', completed: false, assigneeId: 123, companyId: 7, organizationName: 'Acme', assigneeName: 'El Example', start: '2026-10-14T16:30:45.123Z', due: '2026-10-14T17:30:45.123Z' };
-  plugin.provider = { capabilities: { update: true }, list: async () => [item], enrich: async items => items, listResources: async () => [{ id: '123', label: 'El Example' }], update: async () => writes++ };
+  const item = { provider: 'autotask-todo', remoteId: '1', description: 'Review', completed: false, assigneeId: 123, companyId: 7, organizationName: 'Acme', assigneeName: 'LaurentFough Example', start: '2026-10-14T16:30:45.123Z', due: '2026-10-14T17:30:45.123Z' };
+  plugin.provider = { capabilities: { update: true }, list: async () => [item], enrich: async items => items, listResources: async () => [{ id: '123', label: 'LaurentFough Example' }], update: async () => writes++ };
   const view = views.get('autotask-todo-view')({ app: plugin.app }); await view.onOpen();
   const offset = controls.length; controls.find(c => c.text === 'Edit').click(); await modals[0].openPromise;
   const editorControls = controls.slice(offset);
@@ -111,7 +111,7 @@ test('changing calendar timezone does not generate a remote date edit', async ()
 });
 test('company dialog searches names and submits only the chosen company', async () => {
   const { plugin, controls, views, modals } = await harness(); const moves = [];
-  const item = { provider: 'autotask-todo', remoteId: '1', description: 'Review', completed: false, assigneeId: 123, companyId: 7, organizationName: 'Acme', assigneeName: 'El', start: '2026-10-14T16:00:00Z', due: '2026-10-14T17:00:00Z' };
+  const item = { provider: 'autotask-todo', remoteId: '1', description: 'Review', completed: false, assigneeId: 123, companyId: 7, organizationName: 'Acme', assigneeName: 'LaurentFough', start: '2026-10-14T16:00:00Z', due: '2026-10-14T17:00:00Z' };
   plugin.provider = { capabilities: { update: true, changeCompany: true }, list: async () => [item], enrich: async items => items, listResources: async () => [], searchCompanies: async query => ({ items: [{ id: '0', name: query }], hasMore: false }), changeCompany: async (snapshot, destination) => moves.push(destination) };
   const view = views.get('autotask-todo-view')({ app: plugin.app }); await view.onOpen();
   assert.ok(!controls.some(c => c.text === 'Change company'));
@@ -124,7 +124,7 @@ test('company dialog searches names and submits only the chosen company', async 
 });
 test('task header places a minute-only due date beside status and ID', async () => {
   const { plugin, views } = await harness();
-  const item = { provider: 'autotask-todo', remoteId: '12345', description: 'Review', completed: false, organizationName: 'Acme', assigneeName: 'El', due: '2026-10-14T01:50:00.123Z' };
+  const item = { provider: 'autotask-todo', remoteId: '12345', description: 'Review', completed: false, organizationName: 'Acme', assigneeName: 'LaurentFough', due: '2026-10-14T01:50:00.123Z' };
   plugin.provider = { capabilities: { update: false }, list: async () => [item], enrich: async items => items };
   const view = views.get('autotask-todo-view')({ app: plugin.app }); await view.onOpen();
   const text = view.contentEl.allText();
@@ -134,7 +134,7 @@ test('task header places a minute-only due date beside status and ID', async () 
 });
 test('Autotask creation UI uses named choices, local minute fields and chosen company', async () => {
   const {plugin,commands,controls,modals}=await harness({resourceId:'123'}); const created=[];
-  plugin.provider={capabilities:{create:true},listResources:async()=>[{id:'123',label:'El Example'}],actionTypes:async()=>[{id:'1',label:'Call'}],searchCompanies:async()=>({items:[{id:'7',name:'Acme'}]}),create:async v=>created.push(v)}; plugin.openView=async()=>{};
+  plugin.provider={capabilities:{create:true},listResources:async()=>[{id:'123',label:'LaurentFough Example'}],actionTypes:async()=>[{id:'1',label:'Call'}],searchCompanies:async()=>({items:[{id:'7',name:'Acme'}]}),create:async v=>created.push(v)}; plugin.openView=async()=>{};
   commands.find(c=>c.id==='create-autotask-task').callback(); await modals[0].openPromise;
   controls.find(c=>c.type==='text'&&!c.inputEl.type).change('Acme'); await controls.find(c=>c.text==='Search').click();
   controls.find(c=>c.type==='dropdown'&&c.options['7']).change('7'); controls.find(c=>c.type==='textarea').change('Review client');
@@ -206,8 +206,8 @@ test('Autotask switches between My Tasks, Delegated by Me and deduplicated All T
 });
 test('missing-task diagnostic reads outside list filters and identifies creator mismatch',async()=>{
  const {plugin,commands,controls,modals}=await harness();let checked;
- plugin.provider={inspectTask:async id=>{checked=id;return{remoteId:'9',assigneeId:456,assigneeName:'Alex',creatorId:789,creatorName:'El',configuredAssigneeId:123,configuredCreatorId:123,matchesAssigned:false,matchesCreated:false,completed:true};}};
- commands.find(c=>c.id==='inspect-autotask-task').callback();await modals[0].openPromise;controls.find(c=>c.type==='text').change('9');await controls.find(c=>c.text==='Check task').click();assert.equal(checked,'9');const text=modals[0].contentEl.allText();assert.ok(text.includes('El (#789)'));assert.ok(text.includes('Check Creator Resource ID'));assert.ok(text.includes('filters hide this task'));
+ plugin.provider={inspectTask:async id=>{checked=id;return{remoteId:'9',assigneeId:456,assigneeName:'Alex',creatorId:789,creatorName:'LaurentFough',configuredAssigneeId:123,configuredCreatorId:123,matchesAssigned:false,matchesCreated:false,completed:true};}};
+ commands.find(c=>c.id==='inspect-autotask-task').callback();await modals[0].openPromise;controls.find(c=>c.type==='text').change('9');await controls.find(c=>c.text==='Check task').click();assert.equal(checked,'9');const text=modals[0].contentEl.allText();assert.ok(text.includes('LaurentFough (#789)'));assert.ok(text.includes('Check Creator Resource ID'));assert.ok(text.includes('filters hide this task'));
 });
 test('Delegated by Me includes human and API creators',async()=>{
  const {plugin,views}=await harness({viewPreferences:{'autotask-todo-view':{scope:'delegated'}}});plugin.provider={resourceId:123,creatorResourceId:123,creatorResourceIds:[123,555],capabilities:{update:false},listForUser:async()=>[{remoteId:'1',creatorId:123,assigneeId:456,description:'Native created'},{remoteId:'2',creatorId:555,assigneeId:456,description:'Plugin created'}].map(t=>({...t,provider:'autotask-todo',completed:false})),enrich:async t=>t};const view=views.get('autotask-todo-view')({app:plugin.app});await view.onOpen();const walk=el=>[el,...el.children.flatMap(walk)];const group=walk(view.contentEl).filter(el=>el.cls==='task2do-task-group')[0];assert.ok(group.allText().includes('Delegated by Me (2)'));assert.ok(group.allText().includes('Plugin created'));assert.ok(group.allText().includes('Native created'));

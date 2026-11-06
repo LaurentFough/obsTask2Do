@@ -2,7 +2,7 @@
 title: Task2Do Obsidian Plugin
 description: Local-first todo.txt tasks with optional modular task integrations
 slug: task2do
-author: El
+author: LaurentFough
 type: software-runbook
 date-created: 2026-10-13
 date-modified: 2026-11-06
@@ -15,11 +15,11 @@ tags: [obsidian, todo-txt, autotask, microsoft-graph, integrations]
 keywords: [CompanyToDos, Microsoft To Do, device code, modular providers]
 ---
 
-# Task2Do — 0.9.0-alpha.2 (ticket preview)
+# Task2Do — 0.9.0-alpha.3 (ticket preview)
 
 Desktop task manager with todo.txt as its local default and optional Autotask, Microsoft To Do and Planner integrations. The plugin ID is now task2do. Existing settings fields, view identifiers, provider identifiers, command suffixes and saved credentials are retained. All providers are embedded in main.js; no dependency installation is needed to use the release.
 
-## New in 0.9.0-alpha.2 — Autotask Tickets preview
+## New in 0.9.0-alpha.3 — Autotask Tickets preview
 
 A separate **Task2Do: Autotask Tickets** panel shares the Autotask API connection and primary assigned resource. It lists ticket numbers, company/assignee names, status, priority, queue and deadlines; supports status/priority/queue filters, search and due sorting; and provides explicit status/priority updates and native ticket notes. Ticket writes default off and have their own settings pane. Status/priority/publish/note-type values come from tenant metadata; no completed status ID or note visibility is assumed. Uncertain note creations are journaled and must be reconciled before another creation. Ticket descriptions and existing notes are not edited by this release.
 

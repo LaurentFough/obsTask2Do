@@ -2,7 +2,7 @@
 title: Task2Do — Autotask Tickets Preview
 description: Setup, behavior, limits and merge instructions for the first Service Desk ticket integration.
 slug: task2do-autotask-tickets
-author: El
+author: LaurentFough
 type: software-runbook
 date-created: 2026-11-06
 date-modified: 2026-11-06

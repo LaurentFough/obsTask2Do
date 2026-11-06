@@ -7,10 +7,10 @@ const raw = { id: 9, companyID: 7, assignedToResourceID: 123, activityDescriptio
 test('organization and resource names are cached and ID failures degrade gracefully', async () => {
   let calls = 0;
   const p = new AutotaskToDoProvider(config, credentials, async request => {
-    calls++; return request.url.includes('Companies') ? { status: 200, json: { item: { id: 7, companyName: 'Acme' } } } : { status: 200, json: { item: { id: 123, firstName: 'El', lastName: 'Example' } } };
+    calls++; return request.url.includes('Companies') ? { status: 200, json: { item: { id: 7, companyName: 'Acme' } } } : { status: 200, json: { item: { id: 123, firstName: 'LaurentFough', lastName: 'Example' } } };
   });
   const enriched = await p.enrich([p.normalize(raw)]);
-  assert.equal(enriched[0].organizationName, 'Acme'); assert.equal(enriched[0].assigneeName, 'El Example');
+  assert.equal(enriched[0].organizationName, 'Acme'); assert.equal(enriched[0].assigneeName, 'LaurentFough Example');
   await p.enrich([p.normalize(raw)]); assert.equal(calls, 2);
   const blocked = new AutotaskToDoProvider(config, credentials, async () => ({ status: 403 }));
   const fallback = await blocked.enrich([blocked.normalize(raw)]);
@@ -47,10 +47,10 @@ test('resource selector paginates active named users, excludes API licenses and 
   const p = new AutotaskToDoProvider(config, credentials, async request => {
     calls.push(request);
     if (request.url.endsWith('/fields')) return { status: 200, json: { fields: [{ name: 'licenseType', picklistValues: [{ value: '99', label: 'API User (system)' }] }] } };
-    if (request.method === 'POST') return { status: 200, json: { items: [{ id: 2, firstName: 'El', lastName: 'Example', isActive: true, licenseType: 1 }, { id: 3, firstName: 'API', lastName: 'Account', isActive: true, licenseType: 99 }, { id: 4, firstName: 'Inactive', lastName: 'User', isActive: false, licenseType: 1 }], pageDetails: { nextPageUrl: config.baseUrl + 'Resources/query?page=2' } } };
-    return { status: 200, json: { items: [{ id: 5, firstName: 'El', lastName: 'Example', isActive: true, licenseType: 1 }, { id: 6, firstName: 'Alice', lastName: 'Smith', isActive: true, licenseType: 1 }] } };
+    if (request.method === 'POST') return { status: 200, json: { items: [{ id: 2, firstName: 'LaurentFough', lastName: 'Example', isActive: true, licenseType: 1 }, { id: 3, firstName: 'API', lastName: 'Account', isActive: true, licenseType: 99 }, { id: 4, firstName: 'Inactive', lastName: 'User', isActive: false, licenseType: 1 }], pageDetails: { nextPageUrl: config.baseUrl + 'Resources/query?page=2' } } };
+    return { status: 200, json: { items: [{ id: 5, firstName: 'LaurentFough', lastName: 'Example', isActive: true, licenseType: 1 }, { id: 6, firstName: 'Alice', lastName: 'Smith', isActive: true, licenseType: 1 }] } };
   });
   const users = await p.listResources();
-  assert.deepEqual(users.map(u => u.label), ['Alice Smith', 'El Example (#2)', 'El Example (#5)']);
+  assert.deepEqual(users.map(u => u.label), ['Alice Smith', 'LaurentFough Example (#2)', 'LaurentFough Example (#5)']);
   assert.equal(JSON.parse(calls[1].body).filter[0].field, 'isActive'); assert.equal(calls[2].method, 'GET');
 });

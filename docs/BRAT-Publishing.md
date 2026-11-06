@@ -2,7 +2,7 @@
 title: Task2Do — BRAT Publishing and Installation
 description: Repeatable GitHub release workflow and BRAT installation, updates and recovery.
 slug: task2do-brat-publishing
-author: El
+author: LaurentFough
 type: software-runbook
 date-created: 2026-11-06
 date-modified: 2026-11-06

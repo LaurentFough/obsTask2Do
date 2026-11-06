@@ -1,11 +1,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { selectTasks, ProviderRegistry } = require('../task-core.cjs');
-const items = [{ remoteId: '1', completed: false, due: '2026-10-20T00:00:00Z', description: 'Review', organizationName: 'Acme', assigneeName: 'El' }, { remoteId: '2', completed: true, due: '2026-10-14T00:00:00Z', title: 'Done', listName: 'Work' }, { remoteId: '3', completed: false, description: 'Later' }];
+const items = [{ remoteId: '1', completed: false, due: '2026-10-20T00:00:00Z', description: 'Review', organizationName: 'Acme', assigneeName: 'LaurentFough' }, { remoteId: '2', completed: true, due: '2026-10-14T00:00:00Z', title: 'Done', listName: 'Work' }, { remoteId: '3', completed: false, description: 'Later' }];
 test('status filters and cross-provider text search', () => {
   assert.deepEqual(selectTasks(items).map(i => i.remoteId), ['1', '3']);
   assert.deepEqual(selectTasks(items, { state: 'completed' }).map(i => i.remoteId), ['2']);
-  for (const search of ['ACME', 'el', 'review']) assert.equal(selectTasks(items, { state: 'all', search })[0].remoteId, '1');
+  for (const search of ['ACME', 'laurentfough', 'review']) assert.equal(selectTasks(items, { state: 'all', search })[0].remoteId, '1');
   assert.equal(selectTasks(items, { state: 'all', search: 'work' })[0].remoteId, '2');
   assert.equal(selectTasks(items, { search: 'missing' }).length, 0);
 });

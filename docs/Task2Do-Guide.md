@@ -5,7 +5,7 @@ slug: task2do-guide
 author: El
 type: software-runbook
 date-created: 2026-10-14
-date-modified: 2026-10-14
+date-modified: 2026-11-06
 date-published: null
 source: [Task2Do source code and automated tests, todo.txt project, Obsidian developer documentation, Microsoft Learn, Autotask developer documentation, OpenProject documentation, Moovila PublicAPI]
 domain: IT
@@ -13,12 +13,18 @@ url: https://github.com/LaurentFough/obsTask2Do
 draft: true
 tags: [task2do, obsidian, todo-txt, task-management, autotask, microsoft-graph, planner, openproject, moovila]
 keywords: [local-first, provider, mapping, preview, synchronization, credentials, configuration, recovery]
-plugin-version: 0.8.0-alpha.2
+plugin-version: 0.9.0-alpha.2
 ---
 
 # Task2Do guide
 
-This guide describes **Task2Do 0.8.0-alpha.2**, an alpha desktop plugin for Obsidian. It covers implemented behavior; future work is identified explicitly. Check the version at the top of **Settings → Task2Do** when comparing your installation with this guide.
+This guide describes **Task2Do 0.9.0-alpha.2**, an alpha desktop plugin for Obsidian. It covers implemented behavior; future work is identified explicitly. Check the version at the top of **Settings → Task2Do** when comparing your installation with this guide.
+
+## Autotask Tickets — 0.9.0-alpha.2
+
+A separate **Task2Do: Autotask Tickets** panel now reads tickets primarily assigned to the configured **Assigned Resource ID**, sharing the existing Autotask connection. The **Autotask Tickets** settings pane has its own write switch, off by default. It supports ticket search, status/priority/queue filters, explicit status/priority updates and native ticket notes with selected visibility and uncertain-write reconciliation.
+
+See the [ticket setup, limits and recovery guide](Autotask-Tickets.md) before enabling writes. Ticket creation, reassignment, time entries and cross-sync remain deferred. Existing CRM To-Do behavior is retained. This version merges the owner's revised labels and Guide with the ticket feature; live tenant validation is still pending.
 
 ## 1. Design and operating philosophy
 

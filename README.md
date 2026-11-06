@@ -5,7 +5,7 @@ slug: task2do
 author: El
 type: software-runbook
 date-created: 2026-10-13
-date-modified: 2026-10-14
+date-modified: 2026-11-06
 date-published: null
 source: [Autotask official REST documentation, Microsoft Learn, Obsidian developer documentation]
 domain: IT
@@ -15,9 +15,17 @@ tags: [obsidian, todo-txt, autotask, microsoft-graph, integrations]
 keywords: [CompanyToDos, Microsoft To Do, device code, modular providers]
 ---
 
-# Task2Do — 0.8.0-alpha.2
+# Task2Do — 0.9.0-alpha.2 (ticket preview)
 
 Desktop task manager with todo.txt as its local default and optional Autotask, Microsoft To Do and Planner integrations. The plugin ID is now task2do. Existing settings fields, view identifiers, provider identifiers, command suffixes and saved credentials are retained. All providers are embedded in main.js; no dependency installation is needed to use the release.
+
+## New in 0.9.0-alpha.2 — Autotask Tickets preview
+
+A separate **Task2Do: Autotask Tickets** panel shares the Autotask API connection and primary assigned resource. It lists ticket numbers, company/assignee names, status, priority, queue and deadlines; supports status/priority/queue filters, search and due sorting; and provides explicit status/priority updates and native ticket notes. Ticket writes default off and have their own settings pane. Status/priority/publish/note-type values come from tenant metadata; no completed status ID or note visibility is assumed. Uncertain note creations are journaled and must be reconciled before another creation. Ticket descriptions and existing notes are not edited by this release.
+
+See [Autotask Tickets setup and merge notes](docs/Autotask-Tickets.md). This build is reconciled with the owner's updated main at 2bdac131f0a9765e7dce74b7b3fbb320b1bf7403 on feature/autotask-tickets-merge. Revised labels and capitalization are preserved, and both Guide files now link to the ticket addendum. Publication/review status is tracked separately from local validation; a review branch is not a published release.
+
+Validation: **174 tests pass**, including primary-assignment queries, status PATCH/readback, write gates, note visibility, persistent uncertain-write handling, note reconciliation and ticket UI flows. Live Autotask tenant/Swagger acceptance testing remains pending. Creation, secondary assignments, reassignment, time entries, attachments and ticket cross-sync are deferred.
 
 ## New in 0.8.0-alpha.2 — contextual hover hints
 

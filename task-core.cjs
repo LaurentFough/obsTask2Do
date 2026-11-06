@@ -1,5 +1,5 @@
 'use strict';
-/**= Version 0.8.0-alpha.2. Shared task presentation and provider registration. */
+/**= Version 0.9.0-alpha.2. Shared task presentation and provider registration. */
 class ProviderRegistry {
   constructor() { this.providers = new Map(); }
   register(provider) {
@@ -13,7 +13,7 @@ class ProviderRegistry {
 function selectTasks(items, options = {}) {
   const state = ['all', 'open', 'completed'].includes(options.state) ? options.state : 'open';
   const search = String(options.search || '').trim().toLocaleLowerCase();
-  const result = items.filter(item => (state === 'all' || item.completed === (state === 'completed')) && (!search || [item.title, item.description, item.organizationName, item.assigneeName, item.listName, item.remoteId].filter(Boolean).join(' ').toLocaleLowerCase().includes(search)));
+  const result = items.filter(item => (state === 'all' || item.completed === (state === 'completed')) && (!search || [item.title, item.description, item.organizationName, item.assigneeName, item.listName, item.remoteId, item.ticketNumber, item.statusName, item.priorityName, item.queueName].filter(Boolean).join(' ').toLocaleLowerCase().includes(search)));
   if (options.sort !== 'none') result.sort((a, b) => {
     const left = Date.parse(a.due), right = Date.parse(b.due);
     if (!Number.isFinite(left)) return Number.isFinite(right) ? 1 : String(a.remoteId).localeCompare(String(b.remoteId));

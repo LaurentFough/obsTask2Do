@@ -1,11 +1,13 @@
 'use strict';
-/**= Version 0.8.0-alpha.2. Reusable, plain-text help for local UI controls. */
+/**= Version 0.9.0-alpha.2. Reusable, plain-text help for local UI controls. */
 const FIELD_HINTS = Object.freeze({
   'Autotask Zone REST URL':'Use the official REST URL for your Autotask Zone, ending /atservicesrest/v1.0/. The example zone is not auto-discovery.',
   'Assigned Resource ID':'The human resource whose assigned tasks should be listed; this is normally different from the API account.',
   'Creator Resource ID (optional)':'Your human Autotask Resource ID for delegated tasks. Blank uses Assigned Resource ID.',
   'API user Resource ID (optional)':'Include tasks created by the API account. Blank attempts username-based resource lookup.',
   'Remember credentials':'Retain the current connection credentials for restart. General → Encrypted credential vault protects saved secrets.',
+  'Enable ticket updates':'Separately allow native ticket notes and status/priority changes. The CRM To-Do write switch does not enable ticket writes.',
+  'Completed ticket status IDs':'Optional tenant-specific completed statuses. Blank uses the completion timestamp; hover ticket status details to see IDs.',
   'Enable To-Do updates':'Allow Autotask creation and explicit/scheduled updates. Enabling this does not itself modify any task.',
   'todo.txt path':'Vault-relative .txt path, for example Task2Do/todo.txt. Selecting a different path does not move the previous file or its bindings.',
   'Task file':'Choose a visible vault-relative .txt file. Existing tasks are retained and receive stable uid: tokens.',
@@ -60,6 +62,11 @@ const ACTION_HINTS = Object.freeze({
   'Complete':'Mark this task complete in its source, subject to permissions and verification.',
   'Reopen':'Return this task to an open state in its source; unsupported workflow/API transitions may be refused.',
   'Note':'Append a timestamped text note to the Autotask description. This is not a native threaded comment.',
+  'Ticket notes':'Read native ticket notes and their visibility; add a note only with explicit type/visibility and ticket writes enabled.',
+  'Update ticket':'Review status and priority changes. This does not edit the ticket description or assignment.',
+  'Save ticket changes':'PATCH only changed status/priority fields and verify them. Tenant workflow rules still apply.',
+  'Add ticket note':'Create one native note with the selected type and visibility. An uncertain result blocks duplicate retries.',
+  'Reconcile ticket note':'Match an existing note to the recorded fingerprint before permitting another note creation.',
   'Attachments':'List Microsoft To Do attachments; upload a small vault file or save an attachment into the vault.',
   'Publish…':'Review a destination mapping and exact values before creating or updating a Microsoft counterpart.',
   'Task file':'Select an existing task file or create a new one; task files are not moved automatically.',
@@ -97,7 +104,7 @@ function actionHint(label,settingName='') {
   if(/^Forget /.test(text))return 'Remove this provider’s current saved credential and connection. Remote tasks and historical credential backups are retained.';
   if(/^Connect /.test(text))return 'Configure and validate this provider connection before opening its tasks.';
   if(/^Open /.test(text)||text==='Open')return `Open ${settingName||text.replace(/^Open /,'')||'the selected view'}.`;
-  if(['General','todo.txt','Autotask','Microsoft To Do','Microsoft Planner','OpenProject','Moovila'].includes(text))return 'Show the '+text+' settings pane.';
+  if(['General','todo.txt','Autotask','Autotask Tickets','Microsoft To Do','Microsoft Planner','OpenProject','Moovila'].includes(text))return 'Show the '+text+' settings pane.';
   return String(settingName||'').trim()?fieldHint(settingName):text?text+'. Review the form before submitting.':'Review this action before submitting.';
 }
 /**= Tooltip text is static help or visible task context; never input values or HTML. */
@@ -123,8 +130,8 @@ function createHintedSetting(Base,nativeTooltip) {
 function hintDate(value){if(!value)return '';if(/^\d{4}-\d{2}-\d{2}$/.test(value))return value+' (date only)';const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleString(undefined,{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'Invalid date';}
 function taskHint(item,editable=true) {
   if(!item||typeof item!=='object')return '';
-  const labels={'todotxt':'Local todo.txt','autotask-todo':'Autotask','microsoft-todo':'Microsoft To Do','microsoft-planner':'Microsoft Planner','openproject':'OpenProject','moovila':'Moovila'};
-  const edits={'todotxt':'Edit title, description, priority, dates, projects and contexts.','autotask-todo':'Edit task text, assignee and schedule. Change company is inside Edit; creator attribution is read-only.','microsoft-todo':'Edit title, description and deadline.','microsoft-planner':'Edit title, description, dates, bucket and assignments.','openproject':'Edit fields allowed by this project’s forms and workflow.'};
-  return [labels[item.provider]||'Task',item.remoteId?'ID '+item.remoteId:'',item.listName||item.source||'',item.organizationName||'',item.assigneeName?'Assigned to '+item.assigneeName:'',item.creatorName?'Created by '+item.creatorName:item.creatorId!=null?'Created by resource #'+item.creatorId:'',item.start?'Start: '+hintDate(item.start):'',item.dueDate||item.due?'Due: '+hintDate(item.dueDate||item.due):'',item.description?String(item.description).slice(0,500):'',editable?(edits[item.provider]||'Use Edit to change supported fields.')+' Use the Edit button; the title is not a direct-edit control.':'Read-only source; editing is not available in this panel.'].filter(Boolean).join('\n');
+  const labels={'todotxt':'Local todo.txt','autotask-todo':'Autotask','autotask-tickets':'Autotask Tickets','microsoft-todo':'Microsoft To Do','microsoft-planner':'Microsoft Planner','openproject':'OpenProject','moovila':'Moovila'};
+  const edits={'autotask-tickets':'Update ticket status and priority; use Ticket notes for native notes. Description and assignment stay unchanged.','todotxt':'Edit title, description, priority, dates, projects and contexts.','autotask-todo':'Edit task text, assignee and schedule. Change company is inside Edit; creator attribution is read-only.','microsoft-todo':'Edit title, description and deadline.','microsoft-planner':'Edit title, description, dates, bucket and assignments.','openproject':'Edit fields allowed by this project’s forms and workflow.'};
+  return [labels[item.provider]||'Task',item.remoteId?'ID '+item.remoteId:'',item.listName||item.source||'',item.organizationName||'',item.assigneeName?'Assigned to '+item.assigneeName:'',item.creatorName?'Created by '+item.creatorName:item.creatorId!=null?'Created by resource #'+item.creatorId:'',item.start?'Start: '+hintDate(item.start):'',item.dueDate||item.due?'Due: '+hintDate(item.dueDate||item.due):'',item.description?String(item.description).slice(0,500):'',editable?(edits[item.provider]||'Use Edit to change supported fields.')+(item.provider==='autotask-tickets'?' Use Update ticket; the title is not a direct-edit control.':' Use the Edit button; the title is not a direct-edit control.'):'Read-only source; editing is not available in this panel.'].filter(Boolean).join('\n');
 }
 module.exports={fieldHint,actionHint,hintElement,createHintedSetting,taskHint};

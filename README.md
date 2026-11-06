@@ -79,7 +79,7 @@ Duplicate/invalid IDs stop editing rather than merge unrelated tasks. External e
 
 Local tasks publish to Microsoft To Do and Planner through the existing preview/journal mechanism. Creating new Autotask, OpenProject or Moovila counterparts from local tasks is not included in this release. Existing Autotask-imported task publishing and source updates remain available. OpenProject and Moovila follow their deferred backlog order.
 
-Validation: **150 automated checks pass** across standalone setup, identity migration, structured editing, named views, external events, Markdown indexing, local Microsoft publishing, conflict resolution and uncertain-write protection. Live Microsoft tenant acceptance testing remains pending. Source and tests are included. GitHub publication remains blocked by the connection's existing Contents-write HTTP 403; generated appcast URLs are prepared release locations, not a published release.
+Validation: **150 automated checks pass** across standalone setup, identity migration, structured editing, named views, external events, Markdown indexing, local Microsoft publishing, conflict resolution and uncertain-write protection. Live Microsoft tenant acceptance testing remains pending. Source and tests are included. The earlier Contents-write blocker has been resolved; see the current publishing workflow below. Generated asset URLs work only after the corresponding release is published.
 
 ## New in 0.6.0-alpha.1
 
@@ -97,11 +97,11 @@ The ribbon includes Planner and task sync. OpenProject follows the Microsoft/loc
 
 ### Releases and updates
 
-Repository: https://github.com/LaurentFough/obsTask2Do. Publishing is currently blocked by GitHub integration HTTP 403 (Contents write access). No remote release or working update endpoint has been published.
+Install through **BRAT** using `LaurentFough/obsTask2Do` after the first GitHub release is published. BRAT downloads the separate release assets and can manage future updates. Task2Do is currently a desktop-only alpha.
 
-Run npm run build, npm run check, npm test and npm run release. The prepared appcast contains SHA-256 hashes and exact-version release URLs. The workflow publishes on exact manifest-version tags without a v prefix. Alpha builds publish as prereleases. BRAT is the supported external update route once releases exist; it uses GitHub releases, not this custom appcast. Task2Do does not yet consume its appcast or replace its own installed code. An appcast alone does not enable Obsidian automatic updates.
+Maintainers: open **Actions → Release Task2Do → Run workflow**, select the release branch and enter the exact manifest version (no `v` prefix). The workflow validates, builds and tests, creates the tag, uploads installation assets to a draft and publishes it. Exact-version tag pushes remain supported. Source pushes alone do not publish updates.
 
-Install main.js, manifest.json and styles.css into .obsidian/plugins/task2do, retaining data.json and credentials.enc if present. Source, tests and release workflow are included for review. Automated checks pass; live Planner/Graph/sync acceptance testing and the remote release workflow remain outstanding. Validate disposable tasks before enabling scheduled writes.
+See the [BRAT publishing and installation runbook](docs/BRAT-Publishing.md) for version preparation, user setup, update channels and recovery. BRAT uses GitHub releases; the custom appcast is additional metadata and is not consumed by BRAT or a built-in Task2Do updater.
 
 ### Remaining backlog
 

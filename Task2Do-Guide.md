@@ -374,7 +374,7 @@ npm run release
 
 The build embeds providers into main.js. Release preparation emits standard assets and an appcast JSON with hashes and exact-version GitHub URLs. The GitHub workflow expects a tag exactly matching the manifest version, without a `v` prefix. Alpha versions are prereleases.
 
-BRAT can serve as the external updater once GitHub releases are published. It uses GitHub releases, not this custom appcast. Task2Do has no built-in appcast installer/poller, and publishing an appcast alone does not enable native Obsidian updates. At packaging time, this project's GitHub Contents-write connection was blocked; no new remote release was published.
+BRAT is the external update route through published GitHub release assets. It does not use the custom appcast; Task2Do has no built-in appcast installer/poller. Maintainers can publish through Actions → Release Task2Do → Run workflow or an exact-version tag push. See the [BRAT publishing and installation runbook](docs/BRAT-Publishing.md) for the complete process, first installation, automatic updates and recovery. The earlier GitHub Contents-write blocker has been resolved.
 
 Remaining work includes live provider acceptance testing, richer Planner fields, native local-task publishing into additional providers, verified native Autotask comment/attachment APIs, and deliberate file/state migration tooling. Further OpenProject integration precedes further Moovila integration. Do not treat these as implemented features.
 

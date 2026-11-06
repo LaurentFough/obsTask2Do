@@ -1,34 +1,66 @@
-#= Build and publish exact-version GitHub release assets for Obsidian and BRAT.
+#= Version 1.1.0. Publish verified Obsidian assets for BRAT from a tag or manual run.
 name: Release Task2Do
 on:
   push:
     tags: ['[0-9]*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact manifest version to publish (for example 0.9.0-alpha.2; no v prefix)'
+        required: true
+        type: string
 permissions:
   contents: write
+concurrency:
+  group: task2do-release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify tag matches manifest
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: node -e 'if (process.env.RELEASE_TAG !== require("./manifest.json").version) throw Error("Tag must exactly match manifest version, without v prefix")'
+      - name: Verify publication version
+        run: node scripts/verify-release.cjs
       - run: npm run build
+      - name: Verify committed bundle matches source
+        run: git diff --exit-code -- main.js
       - run: npm run check
       - run: npm test
       - name: Prepare assets and appcast
         run: npm run release
-      - name: Publish release
+      - name: Publish complete release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
+          set -euo pipefail
+          #= Refuse existing releases, including drafts; never replace shipped assets.
+          existing="$(gh api --paginate "repos/$REPOSITORY/releases?per_page=100" --jq '.[] | .tag_name')"
+          if grep -Fxq -- "$RELEASE_VERSION" <<< "$existing"; then
+            echo "::error::Release already exists. Inspect any failed draft before retrying; use a new version for published changes."
+            exit 1
+          fi
+          #= Manual runs create a tag only after all validation has passed.
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_VERSION"; then
+            if [[ "$(git rev-list -n 1 "$RELEASE_VERSION")" != "$GITHUB_SHA" ]]; then
+              echo "::error::Existing tag points to another commit."
+              exit 1
+            fi
+          else
+            gh api --method POST "repos/$REPOSITORY/git/refs" -f "ref=refs/tags/$RELEASE_VERSION" -f "sha=$GITHUB_SHA"
+          fi
           flags=()
-          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" release-assets/main.js release-assets/manifest.json release-assets/styles.css release-assets/appcast.json --repo "$REPOSITORY" --verify-tag --title "Task2Do $RELEASE_TAG" --generate-notes "${flags[@]}"
+          if [[ "$RELEASE_VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_VERSION" --repo "$REPOSITORY" --verify-tag --draft --title "Task2Do $RELEASE_VERSION" --generate-notes "${flags[@]}"
+          gh release upload "$RELEASE_VERSION" release-assets/main.js release-assets/manifest.json release-assets/styles.css release-assets/appcast.json --repo "$REPOSITORY"
+          gh release edit "$RELEASE_VERSION" --repo "$REPOSITORY" --draft=false "${flags[@]}"
+          echo "Published Task2Do $RELEASE_VERSION: https://github.com/$REPOSITORY/releases/tag/$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"

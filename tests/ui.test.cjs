@@ -291,3 +291,11 @@ test('saved ticket user-group filters survive plugin startup validation',async()
  const {plugin,views}=await harness(saved);const scopes=[],provider={id:'autotask-tickets',capabilities:{read:true,update:false},list:async ids=>{scopes.push(ids);return[];}};plugin.registry.register(provider);
  const view=views.get(key)({app:plugin.app});await view.onOpen();assert.deepEqual(Array.from(scopes[0]),['123','456']);assert.equal(plugin.settings.viewPreferences[key].ticketStatus,'9');plugin.onunload();
 });
+
+test('native Autotask group picker persists its identity and queries dynamic membership',async()=>{
+ const key='task2do-autotask-tickets-view',{plugin,views,controls,modals}=await harness(),scopes=[];
+ const provider={id:'autotask-tickets',capabilities:{read:true,update:false},list:async()=>[],resources:async()=>[],groups:async()=>[{id:'department:2',label:'Department: Engineering'}],listGroup:async id=>{scopes.push(id);return[];}};plugin.registry.register(provider);
+ const view=views.get(key)({app:plugin.app});await view.onOpen();const offset=controls.length;controls.find(c=>c.text==='Assignment filter').click();await modals[0].openPromise;
+ const added=controls.slice(offset);await added.find(c=>c.type==='dropdown'&&c.options.native).change('native');controls.slice(offset).filter(c=>c.type==='dropdown'&&c.options['department:2']).at(-1).change('department:2');await added.find(c=>c.text==='Apply assignment filter').click();assert.deepEqual(scopes,['department:2']);assert.equal(plugin.settings.viewPreferences[key].ticketNativeGroup,'department:2');plugin.onunload();
+ const restored=await harness({viewPreferences:{[key]:{ticketAssignmentMode:'native',ticketNativeGroup:'department:2'}}});assert.equal(restored.plugin.settings.viewPreferences[key].ticketNativeGroup,'department:2');restored.plugin.onunload();
+});

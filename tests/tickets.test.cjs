@@ -101,3 +101,29 @@ test('empty, malformed, oversized or unavailable assignee selections never broad
 test('custom ticket queries reject tickets outside each requested assignee scope',async()=>{
  const f=fixture();f.source.listResources=async()=>[{id:'456'}];await assert.rejects(f.provider.list(['456']),/outside the selected primary assignment/);
 });
+
+test('documented ticket query/next pagination works for selected users and preserves origin restrictions',async()=>{
+ const f=fixture(),original=f.source.request;f.source.listResources=async()=>[{id:'123'},{id:'456'}];let current=123;
+ f.source.request=async(url,method,body,readOnly)=>{const p=new URL(url).pathname.split('/v1.0/')[1];if(p==='Tickets/query'){current=body.filter[0].value;return{items:[{...f.raw,id:current,assignedResourceID:current}],pageDetails:{nextPageUrl:f.source.base+'Tickets/query/next?paging=opaque'}};}if(p==='Tickets/query/next'){assert.equal(method,'POST');assert.equal(body.MaxRecords,500);assert.equal(body.filter[0].value,current);return{items:[{...f.raw,id:current+1000,assignedResourceID:current}]};}return original(url,method,body,readOnly);};
+ assert.deepEqual((await f.provider.list(['123','456'])).map(t=>t.remoteId),['123','1123','456','1456']);
+ await assert.rejects(f.provider.request('https://foreign.invalid/atservicesrest/v1.0/Tickets/query/next'),/Rejected/);
+});
+test('ticket collection pagination cannot switch to another allowlisted entity',async()=>{
+ const f=fixture(),original=f.source.request;f.source.request=async(url,...args)=>url.endsWith('Tickets/query')?{items:[],pageDetails:{nextPageUrl:f.source.base+'TicketNotes/query/next'}}:original(url,...args);
+ await assert.rejects(f.provider.list(),/pagination path/);
+});
+function groupFixture(){
+ const f=fixture(),original=f.source.request,catalog={members:[{id:11,departmentID:2,queueID:7,resourceID:123,isActive:true},{id:12,departmentID:2,queueID:7,resourceID:123,isActive:true},{id:13,departmentID:2,queueID:7,resourceID:456,isActive:true}]};
+ f.source.listResources=async()=>[{id:'123',label:'First User'},{id:'456',label:'Second User'}];
+ f.source.request=async(url,method,body,readOnly)=>{const p=new URL(url).pathname.split('/v1.0/')[1];if(p==='Departments/query')return{items:[{id:2,name:'Engineering'}]};if(['ResourceRoleDepartments/query','ResourceRoleQueues/query'].includes(p))return{items:catalog.members};if(p==='Tickets/query')return{items:[{...f.raw,id:body.filter[0].value,assignedResourceID:body.filter[0].value}]};return original(url,method,body,readOnly);};return Object.assign(f,{catalog});
+}
+test('native departments and queues resolve deduplicated current members before querying tickets',async()=>{
+ const f=groupFixture();assert.ok((await f.provider.groups()).some(g=>g.id==='department:2'&&g.label==='Department: Engineering'));
+ assert.deepEqual((await f.provider.groupMembers('department:2')).map(u=>u.id),['123','456']);assert.equal((await f.provider.listGroup('queue:7')).length,2);
+ f.catalog.members=f.catalog.members.filter(m=>m.resourceID===123);assert.equal((await f.provider.listGroup('department:2')).length,1);
+ f.catalog.members=[];assert.deepEqual(await f.provider.listGroup('department:2'),[]);
+});
+test('native group filters reject invalid groups and wrong-scope memberships',async()=>{
+ const f=groupFixture();await assert.rejects(f.provider.listGroup('department:999'),/no longer available/);await assert.rejects(f.provider.listGroup('anything:2'),/Choose/);
+ f.catalog.members[0].departmentID=3;await assert.rejects(f.provider.listGroup('department:2'),/outside the selected group/);
+});

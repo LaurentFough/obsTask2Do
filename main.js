@@ -1164,8 +1164,9 @@ const ACTION_HINTS = Object.freeze({
   'Change ticket assignment':'Load active resources, service desk roles and queues. Saving revalidates their relationships.',
   'Ticket resource role':'Choose an active service desk role for the selected resource. The role can affect billing rates.',
   'Ticket queue':'Choose an active queue associated with the selected resource.',
-  'Assignment filter':'Show primary-assigned tickets for Me, one named user, or a selected set of users. Does not reassign tickets.',
-  'Tickets assigned to':'Me uses the configured Assigned Resource ID. User groups here are a selected set, not native Autotask groups.',
+  'Autotask group':'Choose a predefined department or queue membership group. Current active members are resolved on every refresh; this does not query every ticket in that queue.',
+  'Assignment filter':'Show primary-assigned tickets for Me, one user, a manual selection, or current members of an Autotask department/queue. Does not reassign tickets.',
+  'Tickets assigned to':'Me uses the configured Assigned Resource ID. Manual groups use selected IDs; the Autotask group option resolves department or queue memberships.',
   'Ticket assignee':'Choose the user whose primary-assigned tickets should be fetched.',
   'Search ticket assignees':'Filter the user picker by name; already selected users remain selected.',
   'Apply assignment filter':'Save this panel’s selection and fetch tickets from Autotask. Other filters still apply.',
@@ -1247,7 +1248,7 @@ return module.exports;
 const { AutotaskTicketProvider, ticketStatusIds } = (() => {
 const module = { exports: {} };
 'use strict';
-/**= Version 0.9.0-alpha.5. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
+/**= Version 0.9.0-alpha.6. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
 function ticketId(value,allowZero=false){if(!new RegExp(allowZero?'^(0|[1-9]\\d*)$':'^[1-9]\\d*$').test(String(value))||!Number.isSafeInteger(Number(value)))throw new Error('Enter a valid numeric Autotask ID.');return Number(value);}
 function ticketStatusIds(value=''){return [...new Set(String(value).split(/[\s,;]+/).filter(Boolean).map(v=>String(ticketId(v,true))))];}
 class AutotaskTicketProvider {
@@ -1261,7 +1262,7 @@ class AutotaskTicketProvider {
   assertConnection(source){if(source!==this.connection())throw new Error('Autotask connection changed. Refresh Tickets before continuing.');}
   async request(path,method='GET',body,readOnly=true,source=this.connection()){
     this.assertConnection(source);const base=new URL(source.base),url=new URL(path,base);const relative=url.pathname.slice(base.pathname.length);
-    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+)|(?:ResourceServiceDeskRoles|ResourceRoleQueues|TicketSecondaryResources)\/query|Roles\/(?:query|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
+    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query(?:\/next)?|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query(?:\/next)?|entityInformation\/fields|\d+)|(?:ResourceServiceDeskRoles|ResourceRoleQueues|TicketSecondaryResources|Departments|ResourceRoleDepartments)\/query(?:\/next)?|Roles\/(?:query|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
     if(!readOnly&&!((method==='PATCH'&&relative==='Tickets')||(method==='POST'&&/^Tickets\/\d+\/Notes$/.test(relative))))throw new Error('Unsupported ticket write.');
     const result=await source.request(url.href,method,body,readOnly);this.assertConnection(source);return result;
   }
@@ -1269,7 +1270,7 @@ class AutotaskTicketProvider {
   choices(fields,name){const field=fields.find(f=>f.name===name);if(!field||!Array.isArray(field.picklistValues))return[];return field.picklistValues.filter(v=>v.isActive===true).map(v=>({id:String(ticketId(v.value,true)),label:String(v.label||'#'+v.value),parentValue:v.parentValue==null?'':String(v.parentValue)}));}
   async collection(path,filter,source=this.connection()){
     let url=path,method='POST',body={filter,MaxRecords:500};const rows=[],pages=new Set(),ids=new Set();
-    for(let page=0;page<100;page++){const absolute=new URL(url,source.base).href;if(pages.has(absolute))throw new Error('Repeated ticket pagination URL.');pages.add(absolute);const result=await this.request(url,method,body,true,source);if(!Array.isArray(result.items))throw new Error('Autotask did not return a ticket collection.');for(const item of result.items){const id=ticketId(item.id);if(ids.has(id))throw new Error('Repeated ticket/note ID in pagination.');ids.add(id);rows.push(item);}if(!result.pageDetails?.nextPageUrl)return rows;url=result.pageDetails.nextPageUrl;method='GET';body=undefined;}
+    for(let page=0;page<100;page++){const initial=new URL(path,source.base),next=new URL(url,source.base);if(next.pathname!==initial.pathname&&next.pathname!==initial.pathname+'/next')throw new Error('Rejected unexpected ticket collection pagination path.');const absolute=next.href;if(pages.has(absolute))throw new Error('Repeated ticket pagination URL.');pages.add(absolute);const result=await this.request(url,method,body,true,source);if(!Array.isArray(result.items))throw new Error('Autotask did not return a ticket collection.');for(const item of result.items){const id=ticketId(item.id);if(ids.has(id))throw new Error('Repeated ticket/note ID in pagination.');ids.add(id);rows.push(item);}if(!result.pageDetails?.nextPageUrl)return rows;url=result.pageDetails.nextPageUrl;}
     throw new Error('Ticket pagination limit reached; incomplete data was not shown.');
   }
   normalize(raw,fields=[]){const id=ticketId(raw.id),status=String(ticketId(raw.status,true)),label=name=>this.choices(fields,name).find(v=>v.id===String(raw[name]))?.label||`${name} #${raw[name]??'unknown'}`;
@@ -1294,6 +1295,21 @@ class AutotaskTicketProvider {
     }
     return result;
   }
+  /**= Native groups use documented departments or queue memberships, resolved afresh on every refresh. */
+  async groups(){
+    const source=this.connection(),departments=await this.collection('Departments/query',[{op:'gte',field:'id',value:0}],source),fields=await this.fields('Tickets',source);
+    return [...departments.map(d=>({id:'department:'+ticketId(d.id),label:'Department: '+String(d.name||'#'+d.id)})),...this.choices(fields,'queueID').map(q=>({id:'queue:'+q.id,label:'Queue members: '+q.label}))].sort((a,b)=>a.label.localeCompare(b.label));
+  }
+  async groupMembers(group){
+    if(typeof group!=='string'||!/^(department|queue):[0-9]+$/.test(group))throw new Error('Choose an Autotask department or queue membership group.');
+    const source=this.connection(),[type,value]=group.split(':'),id=ticketId(value,type==='queue');
+    if(!(await this.groups()).some(g=>g.id===group))throw new Error('Selected Autotask group is no longer available. Edit the assignment filter.');
+    const field=type==='department'?'departmentID':'queueID',rows=await this.collection(type==='department'?'ResourceRoleDepartments/query':'ResourceRoleQueues/query',[{op:'eq',field,value:id}],source);
+    if(rows.some(r=>Number(r[field])!==id))throw new Error('Returned membership is outside the selected group.');
+    const users=await this.resources(),ids=[...new Set(rows.filter(r=>type==='queue'||r.isActive===true).map(r=>String(ticketId(r.resourceID))))];
+    this.assertConnection(source);return users.filter(u=>ids.includes(String(u.id)));
+  }
+  async listGroup(group){const members=await this.groupMembers(group);if(!members.length)return[];return this.list(members.map(u=>String(u.id)));}
   async get(id,fields=null,source=this.connection()){id=ticketId(typeof id==='object'?id.remoteId:id);const result=await this.request('Tickets/'+id,'GET',undefined,true,source);if(!result.item||Number(result.item.id)!==id)throw new Error('Ticket identity could not be verified.');return this.normalize(result.item,fields||await this.fields('Tickets',source));}
   signature(item){const raw=item.raw||{};return JSON.stringify(['id','status','priority','assignedResourceID','assignedResourceRoleID','assignedResourceroleID','queueID','companyID','title','description','dueDateTime','lastActivityDate','lastTrackedModificationDateTime','resolution'].map(k=>[k,raw[k]??null]));}
   /**= Resolve current assignment options; queue membership and service desk roles are separate entities. */
@@ -1722,40 +1738,41 @@ class AutotaskTicketAssignmentFilterModal extends Modal {
   onClose(){this.closed=true;this.contentEl.empty();}
   async onOpen(){
     const el=this.contentEl,pref=this.view.plugin.settings.viewPreferences[TICKET_VIEW]||{};
-    let mode=['user','group'].includes(pref.ticketAssignmentMode)?pref.ticketAssignmentMode:'me',single=String(pref.ticketUserId||''),search='',users=[];
+    let mode=['user','group','native'].includes(pref.ticketAssignmentMode)?pref.ticketAssignmentMode:'me',single=String(pref.ticketUserId||''),search='',users=[],groups=[],native=String(pref.ticketNativeGroup||'');
     const selected=new Set(Array.isArray(pref.ticketUserIds)?pref.ticketUserIds.map(String):[]);
-    el.createEl('h2',{text:'Ticket assignment filter'});el.createEl('p',{text:'Me uses the configured Autotask Assigned Resource ID. Group means a selected set of users, not an Autotask queue or security group. Primary assignments only; API permissions still apply.'});
+    el.createEl('h2',{text:'Ticket assignment filter'});el.createEl('p',{text:'Me uses the configured Autotask Assigned Resource ID. Choose users manually or use a documented Autotask department/queue membership group. Native groups show tickets assigned to their current active members, not all tickets in a queue. Primary assignments only; API permissions still apply.'});
     const status=el.createEl('p'),choices=el.createDiv();
     const draw=()=>{
-      choices.empty();if(mode==='me')return;
+      choices.empty();if(mode==='me')return;if(mode==='native'){new Setting(choices).setName('Autotask group').setDesc('Current active department or queue members; membership is refreshed with the ticket list.').addDropdown(d=>{d.addOption('','Choose a predefined group');for(const group of groups)d.addOption(group.id,group.label);d.setValue(native).onChange(v=>native=v);});return;}
       if(mode==='user'){new Setting(choices).setName('Ticket assignee').addDropdown(d=>{d.addOption('','Choose a user');for(const user of users)d.addOption(String(user.id),user.label||user.name);d.setValue(single).onChange(v=>single=v);});return;}
       new Setting(choices).setName('Search ticket assignees').addText(t=>t.setValue(search).onChange(v=>{search=v;drawUsers();}));
       const list=choices.createDiv(),count=choices.createEl('p');
       const drawUsers=()=>{list.empty();count.setText(`${selected.size} selected (maximum 50).`);for(const user of users.filter(u=>(u.label||u.name||'').toLowerCase().includes(search.toLowerCase())))new Setting(list).setName(user.label||user.name).addToggle(t=>t.setValue(selected.has(String(user.id))).onChange(value=>{if(value)selected.add(String(user.id));else selected.delete(String(user.id));count.setText(`${selected.size} selected (maximum 50).`);}));};drawUsers();
     };
-    new Setting(el).setName('Tickets assigned to').addDropdown(d=>d.addOption('me','Me').addOption('user','A selected user').addOption('group','A selected group of users').setValue(mode).onChange(v=>{mode=v;draw();}));
+    new Setting(el).setName('Tickets assigned to').addDropdown(d=>d.addOption('me','Me').addOption('user','A selected user').addOption('group','A selected group of users').addOption('native','An Autotask department / queue group').setValue(mode).onChange(async v=>{mode=v;draw();if(mode==='native'){status.setText('Loading Autotask groups…');try{groups=await this.provider.groups();if(this.closed)return;status.setText('Predefined departments and queue memberships. Other internal group types may not be exposed by the REST API.');if(mode==='native')draw();}catch(e){if(!this.closed)status.setText('Could not load Autotask groups: '+e.message);}}}));
     draw();
     new Setting(el).addButton(b=>b.setButtonText('Apply assignment filter').setCta().onClick(async()=>{
       b.setDisabled(true);try{
         if(this.provider!==this.view.currentProvider())throw new Error('Autotask connection changed. Reopen the filter.');
         const ids=mode==='user'?[single]:[...selected];
-        if(mode!=='me'&&(!ids.length||ids.length>50||ids.some(id=>!users.some(u=>String(u.id)===id))))throw new Error('Choose between 1 and 50 available users.');
+        if(mode==='native'&&!groups.some(g=>g.id===native))throw new Error('Choose an available Autotask group.');
+        if(['user','group'].includes(mode)&&(!ids.length||ids.length>50||ids.some(id=>!users.some(u=>String(u.id)===id))))throw new Error('Choose between 1 and 50 available users.');
         const preferences=this.view.plugin.settings.viewPreferences,before=preferences[TICKET_VIEW];
-        preferences[TICKET_VIEW]={...before,ticketAssignmentMode:mode,ticketUserId:single,ticketUserIds:[...selected]};
+        preferences[TICKET_VIEW]={...before,ticketAssignmentMode:mode,ticketUserId:single,ticketUserIds:[...selected],ticketNativeGroup:native};
         try{await this.view.plugin.persist();}catch(e){preferences[TICKET_VIEW]=before;throw e;}
         this.close();await this.view.refresh();
       }catch(e){if(!this.closed)status.setText(e.message);}finally{b.setDisabled(false);}
     }));
     status.setText('Loading available Autotask users…');
-    try{users=await this.provider.resources();if(this.closed)return;status.setText('Selections are saved for this panel. Existing status, queue and search filters still apply.');draw();}
+    try{users=await this.provider.resources();if(this.closed)return;if(mode==='native')groups=await this.provider.groups();if(this.closed)return;status.setText('Selections are saved for this panel. Existing status, queue and search filters still apply.');draw();}
     catch(e){if(!this.closed)status.setText(e.message+' You can still select Me.');}
   }
 }
 class AutotaskTicketsView extends ToDoView {
   getViewType(){return TICKET_VIEW;}getDisplayText(){return 'Task2Do: Autotask Tickets';}
-  currentProvider(){return this.plugin.registry.get('autotask-tickets');}async loadItems(provider){const p=this.plugin.settings.viewPreferences[TICKET_VIEW]||{};if(p.ticketAssignmentMode==='user')return provider.list([p.ticketUserId]);if(p.ticketAssignmentMode==='group')return provider.list(p.ticketUserIds||[]);return provider.list();}
+  currentProvider(){return this.plugin.registry.get('autotask-tickets');}async loadItems(provider){const p=this.plugin.settings.viewPreferences[TICKET_VIEW]||{};if(p.ticketAssignmentMode==='native')return provider.listGroup(p.ticketNativeGroup);if(p.ticketAssignmentMode==='user')return provider.list([p.ticketUserId]);if(p.ticketAssignmentMode==='group')return provider.list(p.ticketUserIds||[]);return provider.list();}
   toolbar(el){this.panelToolbar(el).addButton(b=>{b.setButtonText('New task').setDisabled(true);b.buttonEl?.setAttribute('title','Ticket creation is deferred; use Autotask to create tickets.');}).addButton(b=>b.setButtonText('Refresh').onClick(()=>this.refresh())).addButton(b=>b.setButtonText('Connect').onClick(()=>new ConnectModal(this.plugin,()=>this.plugin.openTicketsView()).open())).addButton(b=>b.setButtonText('Assignment filter').onClick(()=>new AutotaskTicketAssignmentFilterModal(this).open()));}
-  renderItems(items,el,provider){const p=this.plugin.settings.viewPreferences[TICKET_VIEW]||{},label=p.ticketAssignmentMode==='user'?'Selected user':p.ticketAssignmentMode==='group'?`Selected group (${(p.ticketUserIds||[]).length} users)`:'Me';new Setting(el).setName('Assigned to: '+label);const controls=new Setting(el),holder=el.createDiv();const pref=()=>this.plugin.settings.viewPreferences[TICKET_VIEW];const draw=()=>{holder.empty();const p=pref();super.renderItems(items.filter(item=>(!p.ticketStatus||item.statusId===p.ticketStatus)&&(!p.ticketPriority||item.priorityId===p.ticketPriority)&&(!p.ticketQueue||String(item.raw?.queueID??'')===p.ticketQueue)),holder,provider);};for(const [key,label,idField,nameField]of [['ticketStatus','Status','statusId','statusName'],['ticketPriority','Priority','priorityId','priorityName'],['ticketQueue','Queue','queueID','queueName']])controls.addDropdown(d=>{d.addOption('','All '+label.toLowerCase()+' values');const seen=new Set();for(const item of items){const id=key==='ticketQueue'?String(item.raw?.queueID??''):item[idField];if(id&&!seen.has(id)){d.addOption(id,item[nameField]||id);seen.add(id);}}d.setValue(pref()[key]||'').onChange(async v=>{pref()[key]=v;draw();try{await this.plugin.persist();}catch(e){new Notice(e.message);}});});draw();}
+  renderItems(items,el,provider){const p=this.plugin.settings.viewPreferences[TICKET_VIEW]||{},label=p.ticketAssignmentMode==='native'?'Autotask group ('+p.ticketNativeGroup+')':p.ticketAssignmentMode==='user'?'Selected user':p.ticketAssignmentMode==='group'?`Selected group (${(p.ticketUserIds||[]).length} users)`:'Me';new Setting(el).setName('Assigned to: '+label);const controls=new Setting(el),holder=el.createDiv();const pref=()=>this.plugin.settings.viewPreferences[TICKET_VIEW];const draw=()=>{holder.empty();const p=pref();super.renderItems(items.filter(item=>(!p.ticketStatus||item.statusId===p.ticketStatus)&&(!p.ticketPriority||item.priorityId===p.ticketPriority)&&(!p.ticketQueue||String(item.raw?.queueID??'')===p.ticketQueue)),holder,provider);};for(const [key,label,idField,nameField]of [['ticketStatus','Status','statusId','statusName'],['ticketPriority','Priority','priorityId','priorityName'],['ticketQueue','Queue','queueID','queueName']])controls.addDropdown(d=>{d.addOption('','All '+label.toLowerCase()+' values');const seen=new Set();for(const item of items){const id=key==='ticketQueue'?String(item.raw?.queueID??''):item[idField];if(id&&!seen.has(id)){d.addOption(id,item[nameField]||id);seen.add(id);}}d.setValue(pref()[key]||'').onChange(async v=>{pref()[key]=v;draw();try{await this.plugin.persist();}catch(e){new Notice(e.message);}});});draw();}
   taskActions(card,item,provider){card.createEl('small',{text:[item.organizationName,item.assigneeName,item.queueName].filter(Boolean).join(' · ')});hintElement(card.createEl('small',{text:'Ticket status: '+item.statusName+' · Priority: '+item.priorityName}),`Status: ${item.statusName} (#${item.statusId})\nPriority: ${item.priorityName} (#${item.priorityId})\nQueue: ${item.queueName} (#${item.raw?.queueID??'unassigned'})\nUse Update ticket to edit title, description, due date, status, priority or assignment.`,setTooltip);const controls=new Setting(card);if(provider.enableWrites)controls.addButton(b=>b.setButtonText('Update ticket').onClick(()=>new AutotaskTicketUpdateModal(this,item).open()));controls.addButton(b=>b.setButtonText('Ticket notes').onClick(()=>new AutotaskTicketNotesModal(this,item).open()));}
 }
 class MicrosoftSignInModal extends Modal {
@@ -2258,7 +2275,7 @@ module.exports = class Task2DoPlugin extends Plugin {
     this.settings.viewPreferences = {};
     for (const key of [VIEW, GRAPH_VIEW, TXT_VIEW, PLANNER_VIEW, OP_VIEW, MOOVILA_VIEW, TICKET_VIEW]) {
       const pref = saved?.viewPreferences?.[key];
-      this.settings.viewPreferences[key] = { state: ['open', 'completed', 'all'].includes(pref?.state) ? pref.state : 'open', sort: ['due-asc', 'due-desc', 'none'].includes(pref?.sort) ? pref.sort : 'due-asc', search: typeof pref?.search === 'string' ? pref.search : '', ...(key===TICKET_VIEW?{ticketStatus:typeof pref?.ticketStatus==='string'?pref.ticketStatus:'',ticketPriority:typeof pref?.ticketPriority==='string'?pref.ticketPriority:'',ticketQueue:typeof pref?.ticketQueue==='string'?pref.ticketQueue:'',ticketAssignmentMode:['user','group'].includes(pref?.ticketAssignmentMode)?pref.ticketAssignmentMode:'me',ticketUserId:typeof pref?.ticketUserId==='string'?pref.ticketUserId:'',ticketUserIds:Array.isArray(pref?.ticketUserIds)?pref.ticketUserIds.filter(v=>typeof v==='string'):[]}:{}), ...(key===TXT_VIEW?{localView:['inbox','today','upcoming','completed','all'].includes(pref?.localView)?pref.localView:'inbox'}:{}), ...(key === VIEW ? { scope: ['my', 'delegated', 'all'].includes(pref?.scope) ? pref.scope : 'all' } : {}) };
+      this.settings.viewPreferences[key] = { state: ['open', 'completed', 'all'].includes(pref?.state) ? pref.state : 'open', sort: ['due-asc', 'due-desc', 'none'].includes(pref?.sort) ? pref.sort : 'due-asc', search: typeof pref?.search === 'string' ? pref.search : '', ...(key===TICKET_VIEW?{ticketStatus:typeof pref?.ticketStatus==='string'?pref.ticketStatus:'',ticketPriority:typeof pref?.ticketPriority==='string'?pref.ticketPriority:'',ticketQueue:typeof pref?.ticketQueue==='string'?pref.ticketQueue:'',ticketAssignmentMode:['user','group','native'].includes(pref?.ticketAssignmentMode)?pref.ticketAssignmentMode:'me',ticketNativeGroup:typeof pref?.ticketNativeGroup==='string'?pref.ticketNativeGroup:'',ticketUserId:typeof pref?.ticketUserId==='string'?pref.ticketUserId:'',ticketUserIds:Array.isArray(pref?.ticketUserIds)?pref.ticketUserIds.filter(v=>typeof v==='string'):[]}:{}), ...(key===TXT_VIEW?{localView:['inbox','today','upcoming','completed','all'].includes(pref?.localView)?pref.localView:'inbox'}:{}), ...(key === VIEW ? { scope: ['my', 'delegated', 'all'].includes(pref?.scope) ? pref.scope : 'all' } : {}) };
     }
     this.settings.microsoft = { clientId: typeof saved?.microsoft?.clientId === 'string' ? saved.microsoft.clientId : '', tenant: typeof saved?.microsoft?.tenant === 'string' ? saved.microsoft.tenant : 'common', remember: saved?.microsoft?.remember === true };
     if (this.settings.microsoft.remember && saved?.microsoft?.tokens) this.settings.microsoft.tokens = saved.microsoft.tokens;

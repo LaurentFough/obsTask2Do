@@ -1,5 +1,5 @@
 'use strict';
-/**= Version 0.9.0-alpha.5. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
+/**= Version 0.9.0-alpha.6. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
 function ticketId(value,allowZero=false){if(!new RegExp(allowZero?'^(0|[1-9]\\d*)$':'^[1-9]\\d*$').test(String(value))||!Number.isSafeInteger(Number(value)))throw new Error('Enter a valid numeric Autotask ID.');return Number(value);}
 function ticketStatusIds(value=''){return [...new Set(String(value).split(/[\s,;]+/).filter(Boolean).map(v=>String(ticketId(v,true))))];}
 class AutotaskTicketProvider {
@@ -13,7 +13,7 @@ class AutotaskTicketProvider {
   assertConnection(source){if(source!==this.connection())throw new Error('Autotask connection changed. Refresh Tickets before continuing.');}
   async request(path,method='GET',body,readOnly=true,source=this.connection()){
     this.assertConnection(source);const base=new URL(source.base),url=new URL(path,base);const relative=url.pathname.slice(base.pathname.length);
-    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+)|(?:ResourceServiceDeskRoles|ResourceRoleQueues|TicketSecondaryResources)\/query|Roles\/(?:query|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
+    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query(?:\/next)?|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query(?:\/next)?|entityInformation\/fields|\d+)|(?:ResourceServiceDeskRoles|ResourceRoleQueues|TicketSecondaryResources|Departments|ResourceRoleDepartments)\/query(?:\/next)?|Roles\/(?:query|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
     if(!readOnly&&!((method==='PATCH'&&relative==='Tickets')||(method==='POST'&&/^Tickets\/\d+\/Notes$/.test(relative))))throw new Error('Unsupported ticket write.');
     const result=await source.request(url.href,method,body,readOnly);this.assertConnection(source);return result;
   }
@@ -21,7 +21,7 @@ class AutotaskTicketProvider {
   choices(fields,name){const field=fields.find(f=>f.name===name);if(!field||!Array.isArray(field.picklistValues))return[];return field.picklistValues.filter(v=>v.isActive===true).map(v=>({id:String(ticketId(v.value,true)),label:String(v.label||'#'+v.value),parentValue:v.parentValue==null?'':String(v.parentValue)}));}
   async collection(path,filter,source=this.connection()){
     let url=path,method='POST',body={filter,MaxRecords:500};const rows=[],pages=new Set(),ids=new Set();
-    for(let page=0;page<100;page++){const absolute=new URL(url,source.base).href;if(pages.has(absolute))throw new Error('Repeated ticket pagination URL.');pages.add(absolute);const result=await this.request(url,method,body,true,source);if(!Array.isArray(result.items))throw new Error('Autotask did not return a ticket collection.');for(const item of result.items){const id=ticketId(item.id);if(ids.has(id))throw new Error('Repeated ticket/note ID in pagination.');ids.add(id);rows.push(item);}if(!result.pageDetails?.nextPageUrl)return rows;url=result.pageDetails.nextPageUrl;method='GET';body=undefined;}
+    for(let page=0;page<100;page++){const initial=new URL(path,source.base),next=new URL(url,source.base);if(next.pathname!==initial.pathname&&next.pathname!==initial.pathname+'/next')throw new Error('Rejected unexpected ticket collection pagination path.');const absolute=next.href;if(pages.has(absolute))throw new Error('Repeated ticket pagination URL.');pages.add(absolute);const result=await this.request(url,method,body,true,source);if(!Array.isArray(result.items))throw new Error('Autotask did not return a ticket collection.');for(const item of result.items){const id=ticketId(item.id);if(ids.has(id))throw new Error('Repeated ticket/note ID in pagination.');ids.add(id);rows.push(item);}if(!result.pageDetails?.nextPageUrl)return rows;url=result.pageDetails.nextPageUrl;}
     throw new Error('Ticket pagination limit reached; incomplete data was not shown.');
   }
   normalize(raw,fields=[]){const id=ticketId(raw.id),status=String(ticketId(raw.status,true)),label=name=>this.choices(fields,name).find(v=>v.id===String(raw[name]))?.label||`${name} #${raw[name]??'unknown'}`;
@@ -46,6 +46,21 @@ class AutotaskTicketProvider {
     }
     return result;
   }
+  /**= Native groups use documented departments or queue memberships, resolved afresh on every refresh. */
+  async groups(){
+    const source=this.connection(),departments=await this.collection('Departments/query',[{op:'gte',field:'id',value:0}],source),fields=await this.fields('Tickets',source);
+    return [...departments.map(d=>({id:'department:'+ticketId(d.id),label:'Department: '+String(d.name||'#'+d.id)})),...this.choices(fields,'queueID').map(q=>({id:'queue:'+q.id,label:'Queue members: '+q.label}))].sort((a,b)=>a.label.localeCompare(b.label));
+  }
+  async groupMembers(group){
+    if(typeof group!=='string'||!/^(department|queue):[0-9]+$/.test(group))throw new Error('Choose an Autotask department or queue membership group.');
+    const source=this.connection(),[type,value]=group.split(':'),id=ticketId(value,type==='queue');
+    if(!(await this.groups()).some(g=>g.id===group))throw new Error('Selected Autotask group is no longer available. Edit the assignment filter.');
+    const field=type==='department'?'departmentID':'queueID',rows=await this.collection(type==='department'?'ResourceRoleDepartments/query':'ResourceRoleQueues/query',[{op:'eq',field,value:id}],source);
+    if(rows.some(r=>Number(r[field])!==id))throw new Error('Returned membership is outside the selected group.');
+    const users=await this.resources(),ids=[...new Set(rows.filter(r=>type==='queue'||r.isActive===true).map(r=>String(ticketId(r.resourceID))))];
+    this.assertConnection(source);return users.filter(u=>ids.includes(String(u.id)));
+  }
+  async listGroup(group){const members=await this.groupMembers(group);if(!members.length)return[];return this.list(members.map(u=>String(u.id)));}
   async get(id,fields=null,source=this.connection()){id=ticketId(typeof id==='object'?id.remoteId:id);const result=await this.request('Tickets/'+id,'GET',undefined,true,source);if(!result.item||Number(result.item.id)!==id)throw new Error('Ticket identity could not be verified.');return this.normalize(result.item,fields||await this.fields('Tickets',source));}
   signature(item){const raw=item.raw||{};return JSON.stringify(['id','status','priority','assignedResourceID','assignedResourceRoleID','assignedResourceroleID','queueID','companyID','title','description','dueDateTime','lastActivityDate','lastTrackedModificationDateTime','resolution'].map(k=>[k,raw[k]??null]));}
   /**= Resolve current assignment options; queue membership and service desk roles are separate entities. */

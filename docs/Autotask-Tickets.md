@@ -13,7 +13,7 @@ url: https://github.com/LaurentFough/obsTask2Do
 draft: true
 tags: [task2do, obsidian, autotask, tickets, preview]
 keywords: [Service Desk, status, priority, notes, visibility, reconciliation, handoff]
-plugin-version: 0.9.0-alpha.5
+plugin-version: 0.9.0-alpha.6
 baseline-version: 0.8.0-alpha.2
 ---
 
@@ -37,7 +37,7 @@ The panel queries all matching selected primary assignments with pagination and 
 
 Use **Assignment filter** in the Tickets toolbar. Choose **Me**, **A selected user**, or **A selected group of users**. Me means the shared Autotask connection's configured **Assigned Resource ID**, not the API account or an inferred signed-in user.
 
-The picker uses named active Autotask resources. For a group, search names and toggle the users to include, then **Apply assignment filter**. Search only narrows the picker display; it retains selected users. Select between 1 and 50 users. The saved group is a set of user IDs for this panel, not a native Autotask security group, department or queue.
+The picker uses named active Autotask resources. For a group, search names and toggle the users to include, then **Apply assignment filter**. Search only narrows the picker display; it retains selected users. Select between 1 and 50 users. The manually selected group is a set of user IDs for this panel. For predefined memberships, select **An Autotask department / queue group**, then choose a **Department:** or **Queue members:** entry. Membership is resolved again on each refresh using active resources and active department associations, with duplicate roles deduplicated. This shows tickets primarily assigned to those members, including their tickets in other queues; it is not a direct queue-ticket query. Empty native groups show zero tickets. Groups with more than 50 active available members require a narrower selection. Other internal group types have not been verified as REST-accessible; do not assume these lists include every web-app group.
 
 The selection persists across reloads. Custom selections are checked against the current available users on refresh, then queried separately with pagination and strict primary-assignee checks. If any query fails or returns inconsistent scope, the panel shows an error instead of a partial list. Empty or unavailable selections never become an all-ticket query. Use Assignment filter to repair a stale selection or reset to Me. Catalog permission failures do not block returning to Me.
 
@@ -102,7 +102,7 @@ Version **0.9.0-alpha.2** merges the ticket integration onto the owner's supplie
 
 The branch is `feature/autotask-tickets-merge`. Review its changes before merging. No unrelated history or existing tag is replaced. A local alpha package can be tested while GitHub review/publication is pending.
 
-The current release workflow uses the manifest version (**0.9.0-alpha.5**) by default for manual runs; exact-version tag pushes remain supported without a v prefix. Creating a review branch does not itself publish a release; appcast URLs remain prepared asset locations until the release workflow uploads the assets.
+The current release workflow uses the manifest version (**0.9.0-alpha.6**) by default for manual runs; exact-version tag pushes remain supported without a v prefix. Creating a review branch does not itself publish a release; appcast URLs remain prepared asset locations until the release workflow uploads the assets.
 
 Validation commands:
 
@@ -153,4 +153,16 @@ Use disposable tickets to check: title-only updates preserve rich text; changed 
 @online{autotaskServiceDeskRoles2026, author={Kaseya}, title={ResourceServiceDeskRoles}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/ResourceServiceDeskRolesEntity.htm}, urldate={2026-11-06}}
 @online{autotaskResourceQueues2026, author={Kaseya}, title={ResourceRoleQueues}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/ResourceRoleQueuesEntity.htm}, urldate={2026-11-06}}
 @online{autotaskTicketSecondary2026, author={Kaseya}, title={TicketSecondaryResources}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/TicketSecondaryResourcesEntity.htm}, urldate={2026-11-06}}
+```
+
+## Pagination compatibility fix (0.9.0-alpha.6)
+
+Ticket, note and membership collections accept the documented same-collection `/query/next` routes. Pagination retains the original POST query method, filter and page size; foreign origins, unrelated entities, cyclic pages and duplicate identities remain rejected. Earlier builds rejected legitimate next-page paths with “Rejected unexpected ticket API URL”. The reported live error is consistent with that defect, although the tenant response URL was not captured. No ticket ID is required for assignment filtering.
+
+Department and membership queries require the corresponding API access. A permissions failure is shown explicitly; Me and manual user selection remain available independently of native group lookup.
+
+```bibtex
+@online{autotaskPagination2026, author={Kaseya}, title={Advanced query features of the REST API}, url={https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/API_Calls/REST_Advanced_Query_Features.htm}, urldate={2026-11-06}}
+@online{autotaskDepartments2026, author={Kaseya}, title={Departments}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/DepartmentsEntity.htm}, urldate={2026-11-06}}
+@online{autotaskDepartmentMembership2026, author={Kaseya}, title={ResourceRoleDepartments}, url={https://www.autotask.net/help/developerhelp/Content/APIs/REST/Entities/ResourceRoleDepartmentsEntity.htm}, urldate={2026-11-06}}
 ```

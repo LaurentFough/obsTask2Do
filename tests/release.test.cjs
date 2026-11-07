@@ -10,6 +10,10 @@ test('publication rejects version mismatches before remote writes', () => {
     write('package.json', { name: 'task2do', version: '0.9.0-alpha.2' });
     write('versions.json', { '0.9.0-alpha.2': '1.7.2' });
     assert.equal(verifyRelease(root, '0.9.0-alpha.2'), '0.9.0-alpha.2');
+    assert.equal(verifyRelease(root, ''), '0.9.0-alpha.2');
+    assert.equal(verifyRelease(root), '0.9.0-alpha.2');
+    assert.equal(verifyRelease(root, '  0.9.0-alpha.2  '), '0.9.0-alpha.2');
+    assert.throws(() => verifyRelease(root, '  9.0-alpha.2'), /9.0-alpha.2.*0.9.0-alpha.2/);
     assert.throws(() => verifyRelease(root, 'v0.9.0-alpha.2'), /exactly match/);
     write('package.json', { name: 'task2do', version: '0.8.0' });
     assert.throws(() => verifyRelease(root, '0.9.0-alpha.2'), /package.json/);

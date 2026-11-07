@@ -99,7 +99,7 @@ The ribbon includes Planner and task sync. OpenProject follows the Microsoft/loc
 
 Install through **BRAT** using `LaurentFough/obsTask2Do` after the first GitHub release is published. BRAT downloads the separate release assets and can manage future updates. Task2Do is currently a desktop-only alpha.
 
-Maintainers: open **Actions → Release Task2Do → Run workflow**, select the release branch and enter the exact manifest version (no `v` prefix). The workflow validates, builds and tests, creates the tag, uploads installation assets to a draft and publishes it. Exact-version tag pushes remain supported. Source pushes alone do not publish updates.
+Maintainers: open **Actions → Release Task2Do → Run workflow**, select the release branch and leave the version field blank to use the manifest version. An optional entered version must match (no `v` prefix). The workflow validates, builds and tests, creates the tag, uploads installation assets to a draft and publishes it. Exact-version tag pushes remain supported. Source pushes alone do not publish updates.
 
 See the [BRAT publishing and installation runbook](docs/BRAT-Publishing.md) for version preparation, user setup, update channels and recovery. BRAT uses GitHub releases; the custom appcast is additional metadata and is not consumed by BRAT or a built-in Task2Do updater.
 

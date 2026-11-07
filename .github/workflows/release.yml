@@ -1,4 +1,4 @@
-#= Version 1.1.0. Publish verified Obsidian assets for BRAT from a tag or manual run.
+#= Version 1.2.0. Publish verified Obsidian assets for BRAT from a tag or manual run.
 name: Release Task2Do
 on:
   push:
@@ -6,20 +6,20 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Exact manifest version to publish (for example 0.9.0-alpha.2; no v prefix)'
-        required: true
+        description: 'Optional version confirmation; leave blank to use manifest.json'
+        required: false
         type: string
 permissions:
   contents: write
 concurrency:
-  group: task2do-release-${{ inputs.version || github.ref_name }}
+  group: task2do-release
   cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+      RELEASE_VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:

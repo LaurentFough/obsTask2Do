@@ -1,5 +1,5 @@
 'use strict';
-/**= Version 0.9.0-alpha.2. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
+/**= Version 0.9.0-alpha.4. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
 function ticketId(value,allowZero=false){if(!new RegExp(allowZero?'^(0|[1-9]\\d*)$':'^[1-9]\\d*$').test(String(value))||!Number.isSafeInteger(Number(value)))throw new Error('Enter a valid numeric Autotask ID.');return Number(value);}
 function ticketStatusIds(value=''){return [...new Set(String(value).split(/[\s,;]+/).filter(Boolean).map(v=>String(ticketId(v,true))))];}
 class AutotaskTicketProvider {
@@ -13,7 +13,7 @@ class AutotaskTicketProvider {
   assertConnection(source){if(source!==this.connection())throw new Error('Autotask connection changed. Refresh Tickets before continuing.');}
   async request(path,method='GET',body,readOnly=true,source=this.connection()){
     this.assertConnection(source);const base=new URL(source.base),url=new URL(path,base);const relative=url.pathname.slice(base.pathname.length);
-    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
+    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+)|(?:ResourceServiceDeskRoles|ResourceRoleQueues|TicketSecondaryResources)\/query|Roles\/(?:query|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
     if(!readOnly&&!((method==='PATCH'&&relative==='Tickets')||(method==='POST'&&/^Tickets\/\d+\/Notes$/.test(relative))))throw new Error('Unsupported ticket write.');
     const result=await source.request(url.href,method,body,readOnly);this.assertConnection(source);return result;
   }
@@ -29,9 +29,59 @@ class AutotaskTicketProvider {
   async list(){const source=this.connection(),fields=await this.fields('Tickets',source);const rows=await this.collection('Tickets/query',[{op:'eq',field:'assignedResourceID',value:ticketId(source.resourceId)}],source);const result=[];for(const raw of rows){if(Number(raw.assignedResourceID)!==Number(source.resourceId))throw new Error('Returned ticket is outside the configured primary assignment. Refresh first.');const item=this.normalize(raw,fields);item.organizationName=await source.resolveName('Companies',raw.companyID);item.assigneeName=raw.assignedResourceID==null?'Unassigned':await source.resolveName('Resources',raw.assignedResourceID);this.assertConnection(source);result.push(item);}return result;}
   async get(id,fields=null,source=this.connection()){id=ticketId(typeof id==='object'?id.remoteId:id);const result=await this.request('Tickets/'+id,'GET',undefined,true,source);if(!result.item||Number(result.item.id)!==id)throw new Error('Ticket identity could not be verified.');return this.normalize(result.item,fields||await this.fields('Tickets',source));}
   signature(item){const raw=item.raw||{};return JSON.stringify(['id','status','priority','assignedResourceID','assignedResourceRoleID','assignedResourceroleID','queueID','companyID','title','description','dueDateTime','lastActivityDate','lastTrackedModificationDateTime','resolution'].map(k=>[k,raw[k]??null]));}
-  async update(snapshot,changes){if(!this.enableWrites)throw new Error('Enable ticket updates in Autotask Tickets settings.');const id=ticketId(snapshot.remoteId),keys=Object.keys(changes);if(!keys.length||keys.some(k=>!['status','priority'].includes(k)))throw new Error('This release updates ticket status and priority only.');if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);
-    try{const source=this.connection(),fields=await this.fields('Tickets',source),fresh=await this.get(id,fields,source);if(this.signature(fresh)!==this.signature(snapshot))throw new Error('Ticket changed remotely. Refresh before editing.');const patch={id};for(const key of keys){const field=fields.find(f=>f.name===key),value=ticketId(changes[key],true);if(field?.isReadOnly!==false||!this.choices(fields,key).some(v=>v.id===String(value)))throw new Error('Choose an active, writable ticket '+key+'.');if(Number(fresh.raw[key])!==value)patch[key]=value;}if(Object.keys(patch).length===1)return fresh;
-      await this.request('Tickets','PATCH',patch,false,source);const checked=await this.get(id,fields,source);for(const key of Object.keys(patch).filter(k=>k!=='id'))if(Number(checked.raw[key])!==patch[key])throw new Error('Ticket update readback differs. Inspect Autotask and refresh before retrying.');this.log({event:'autotask.ticket-update-verified'});return checked;
+  /**= Resolve current assignment options; queue membership and service desk roles are separate entities. */
+  async resources(){const source=this.connection(),users=await source.listResources();this.assertConnection(source);return users;}
+  async assignmentOptions(resourceID,fields=null,source=this.connection()){
+    const id=ticketId(resourceID),filter=[{op:'eq',field:'resourceID',value:id}];
+    const memberships=await this.collection('ResourceRoleQueues/query',filter,source),associations=await this.collection('ResourceServiceDeskRoles/query',filter,source);
+    if([...memberships,...associations].some(v=>Number(v.resourceID)!==id))throw new Error('Assignment catalog returned another resource.');
+    const roles=[];for(const roleID of [...new Set(associations.filter(v=>v.isActive===true).map(v=>ticketId(v.roleID)))]){const role=(await this.request('Roles/'+roleID,'GET',undefined,true,source)).item;if(!role||Number(role.id)!==roleID)throw new Error('Role identity could not be verified.');if(role.isActive===true)roles.push({id:String(roleID),label:String(role.name||'#'+roleID)});}
+    const queues=this.choices(fields||await this.fields('Tickets',source),'queueID').filter(q=>memberships.some(v=>String(v.queueID)===q.id));
+    return{roles,queues};
+  }
+  async update(snapshot,changes,options={}){
+    if(!this.enableWrites)throw new Error('Enable ticket updates in Autotask Tickets settings.');
+    const id=ticketId(snapshot.remoteId),keys=Object.keys(changes),allowed=['status','priority','title','description','dueDateTime','assignedResourceID','assignedResourceroleID','queueID'];
+    if(!keys.length||keys.some(k=>!allowed.includes(k)))throw new Error('Unsupported ticket edit field.');
+    if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);
+    try{
+      const source=this.connection(),fields=await this.fields('Tickets',source),fresh=await this.get(id,fields,source);
+      if(this.signature(fresh)!==this.signature(snapshot))throw new Error('Ticket changed remotely. Refresh before editing.');
+      const patch={id};
+      for(const key of keys){
+        let value=changes[key];const field=fields.find(f=>f.name===key);
+        if(field?.isReadOnly!==false)throw new Error('Ticket '+key+' is not writable.');
+        if(['status','priority','queueID'].includes(key)){
+          value=ticketId(value,true);if(!this.choices(fields,key).some(v=>v.id===String(value)))throw new Error('Choose an active, writable ticket '+key+'.');
+        }else if(['assignedResourceID','assignedResourceroleID'].includes(key))value=ticketId(value);
+        else if(key==='dueDateTime'){
+          if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z$/.test(value)||!Number.isFinite(Date.parse(value)))throw new Error('Enter a valid UTC due date/time.');
+          const parsed=new Date(value);if(parsed.toISOString().slice(0,16)!==value.slice(0,16))throw new Error('Enter a valid UTC due date/time.');value=parsed.toISOString();
+        }else{
+          const limit=key==='title'?255:8000;
+          if(typeof value!=='string'||(key==='title'&&!value.trim())||value.length>Math.min(limit,Number(field.length)>0?Number(field.length):limit))throw new Error('Enter a valid ticket '+key+'.');
+          if(key==='title')value=value.trim();
+        }
+        const old=fresh.raw[key];const equal=key==='dueDateTime'?Date.parse(old)===Date.parse(value):['status','priority','queueID','assignedResourceID','assignedResourceroleID'].includes(key)?old!=null&&Number(old)===value:old===value;
+        if(!equal)patch[key]=value;
+      }
+      if(Object.hasOwn(patch,'description')&&options.confirmPlainTextReplacement!==true)throw new Error('Confirm plain-text description replacement: Autotask formatting and embedded images will be lost.');
+      if(['assignedResourceID','assignedResourceroleID','queueID'].some(k=>Object.hasOwn(patch,k))){
+        const resource=ticketId(patch.assignedResourceID??fresh.raw.assignedResourceID),role=ticketId(patch.assignedResourceroleID??fresh.raw.assignedResourceroleID),queue=ticketId(patch.queueID??fresh.raw.queueID,true);
+        const users=await source.listResources();this.assertConnection(source);if(!users.some(u=>String(u.id)===String(resource)))throw new Error('Choose an active named resource.');
+        const available=await this.assignmentOptions(resource,fields,source);
+        if(!available.roles.some(v=>v.id===String(role))||!available.queues.some(v=>v.id===String(queue)))throw new Error('Choose an active service desk role and a queue belonging to the selected resource.');
+        const secondary=await this.collection('TicketSecondaryResources/query',[{op:'eq',field:'ticketID',value:id}],source);
+        if(secondary.some(v=>Number(v.ticketID)!==id))throw new Error('Secondary assignment catalog returned another ticket.');
+        if(secondary.some(v=>Number(v.resourceID)===resource))throw new Error('Selected resource is already secondary. Resolve that assignment in Autotask first.');
+      }
+      if(Object.keys(patch).length===1)return fresh;
+      //= Recheck after assignment lookups; this is optimistic detection, not an atomic API condition.
+      if(this.signature(await this.get(id,fields,source))!==this.signature(fresh))throw new Error('Ticket changed remotely. Refresh before editing.');
+      await this.request('Tickets','PATCH',patch,false,source);
+      const checked=await this.get(id,fields,source);
+      for(const key of Object.keys(patch).filter(k=>k!=='id')){const actual=checked.raw[key],expected=patch[key],same=key==='dueDateTime'?Date.parse(actual)===Date.parse(expected):typeof expected==='number'?actual!=null&&Number(actual)===expected:actual===expected;if(!same)throw new Error('Ticket update readback differs. Inspect Autotask and refresh before retrying.');}
+      this.log({event:'autotask.ticket-update-verified'});return checked;
     }finally{this.pending.delete(id);}
   }
   async notes(id){const source=this.connection(),ticketID=ticketId(typeof id==='object'?id.remoteId:id);await this.get(ticketID,null,source);const rows=await this.collection('TicketNotes/query',[{op:'eq',field:'ticketID',value:ticketID}],source);if(rows.some(n=>Number(n.ticketID)!==ticketID))throw new Error('Autotask returned a note from another ticket.');return rows.sort((a,b)=>String(b.createDateTime||'').localeCompare(String(a.createDateTime||''))||b.id-a.id);}

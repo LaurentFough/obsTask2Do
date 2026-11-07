@@ -1099,7 +1099,7 @@ const FIELD_HINTS = Object.freeze({
   'Creator Resource ID (optional)':'Your human Autotask Resource ID for delegated tasks. Blank uses Assigned Resource ID.',
   'API user Resource ID (optional)':'Include tasks created by the API account. Blank attempts username-based resource lookup.',
   'Remember credentials':'Retain the current connection credentials for restart. General → Encrypted credential vault protects saved secrets.',
-  'Enable ticket updates':'Separately allow native ticket notes and status/priority changes. The CRM To-Do write switch does not enable ticket writes.',
+  'Enable ticket updates':'Separately allow supported ticket edits, validated reassignment and native ticket notes. The CRM To-Do write switch does not enable ticket writes.',
   'Completed ticket status IDs':'Optional tenant-specific completed statuses. Blank uses the completion timestamp; hover ticket status details to see IDs.',
   'Enable To-Do updates':'Allow Autotask creation and explicit/scheduled updates. Enabling this does not itself modify any task.',
   'todo.txt path':'Vault-relative .txt path, for example Task2Do/todo.txt. Selecting a different path does not move the previous file or its bindings.',
@@ -1156,8 +1156,16 @@ const ACTION_HINTS = Object.freeze({
   'Reopen':'Return this task to an open state in its source; unsupported workflow/API transitions may be refused.',
   'Note':'Append a timestamped text note to the Autotask description. This is not a native threaded comment.',
   'Ticket notes':'Read native ticket notes and their visibility; add a note only with explicit type/visibility and ticket writes enabled.',
-  'Update ticket':'Review status and priority changes. This does not edit the ticket description or assignment.',
-  'Save ticket changes':'PATCH only changed status/priority fields and verify them. Tenant workflow rules still apply.',
+  'Ticket title':'Rename the ticket. Unchanged descriptions and schedules are preserved.',
+  'Ticket due date / time':'Select a local calendar date and time to the minute. It is converted to UTC; unchanged seconds are retained.',
+  'Replace ticket description':'Enable only to replace the description with plain text. Formatting and embedded images will be lost.',
+  'Ticket description (plain text)':'Replaces the whole description after explicit acceptance. This is not a native ticket note.',
+  'I accept losing description formatting and images':'Required only when saving a changed description.',
+  'Change ticket assignment':'Load active resources, service desk roles and queues. Saving revalidates their relationships.',
+  'Ticket resource role':'Choose an active service desk role for the selected resource. The role can affect billing rates.',
+  'Ticket queue':'Choose an active queue associated with the selected resource.',
+  'Update ticket':'Edit ticket title, due date, status, priority or assignment. Description replacement requires explicit acceptance of formatting and image loss.',
+  'Save ticket changes':'PATCH only changed supported fields after fresh validation and verify the result. Tenant workflow rules still apply.',
   'Add ticket note':'Create one native note with the selected type and visibility. An uncertain result blocks duplicate retries.',
   'Reconcile ticket note':'Match an existing note to the recorded fingerprint before permitting another note creation.',
   'Attachments':'List Microsoft To Do attachments; upload a small vault file or save an attachment into the vault.',
@@ -1224,7 +1232,7 @@ function hintDate(value){if(!value)return '';if(/^\d{4}-\d{2}-\d{2}$/.test(value
 function taskHint(item,editable=true) {
   if(!item||typeof item!=='object')return '';
   const labels={'todotxt':'Local todo.txt','autotask-todo':'Autotask','autotask-tickets':'Autotask Tickets','microsoft-todo':'Microsoft To Do','microsoft-planner':'Microsoft Planner','openproject':'OpenProject','moovila':'Moovila'};
-  const edits={'autotask-tickets':'Update ticket status and priority; use Ticket notes for native notes. Description and assignment stay unchanged.','todotxt':'Edit title, description, priority, dates, projects and contexts.','autotask-todo':'Edit task text, assignee and schedule. Change company is inside Edit; creator attribution is read-only.','microsoft-todo':'Edit title, description and deadline.','microsoft-planner':'Edit title, description, dates, bucket and assignments.','openproject':'Edit fields allowed by this project’s forms and workflow.'};
+  const edits={'autotask-tickets':'Edit supported ticket fields and assignment; description replacement requires explicit confirmation. Use Ticket notes for native notes.','todotxt':'Edit title, description, priority, dates, projects and contexts.','autotask-todo':'Edit task text, assignee and schedule. Change company is inside Edit; creator attribution is read-only.','microsoft-todo':'Edit title, description and deadline.','microsoft-planner':'Edit title, description, dates, bucket and assignments.','openproject':'Edit fields allowed by this project’s forms and workflow.'};
   return [labels[item.provider]||'Task',item.remoteId?'ID '+item.remoteId:'',item.listName||item.source||'',item.organizationName||'',item.assigneeName?'Assigned to '+item.assigneeName:'',item.creatorName?'Created by '+item.creatorName:item.creatorId!=null?'Created by resource #'+item.creatorId:'',item.start?'Start: '+hintDate(item.start):'',item.dueDate||item.due?'Due: '+hintDate(item.dueDate||item.due):'',item.description?String(item.description).slice(0,500):'',editable?(edits[item.provider]||'Use Edit to change supported fields.')+(item.provider==='autotask-tickets'?' Use Update ticket; the title is not a direct-edit control.':' Use the Edit button; the title is not a direct-edit control.'):'Read-only source; editing is not available in this panel.'].filter(Boolean).join('\n');
 }
 module.exports={fieldHint,actionHint,hintElement,createHintedSetting,taskHint};
@@ -1234,7 +1242,7 @@ return module.exports;
 const { AutotaskTicketProvider, ticketStatusIds } = (() => {
 const module = { exports: {} };
 'use strict';
-/**= Version 0.9.0-alpha.2. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
+/**= Version 0.9.0-alpha.4. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
 function ticketId(value,allowZero=false){if(!new RegExp(allowZero?'^(0|[1-9]\\d*)$':'^[1-9]\\d*$').test(String(value))||!Number.isSafeInteger(Number(value)))throw new Error('Enter a valid numeric Autotask ID.');return Number(value);}
 function ticketStatusIds(value=''){return [...new Set(String(value).split(/[\s,;]+/).filter(Boolean).map(v=>String(ticketId(v,true))))];}
 class AutotaskTicketProvider {
@@ -1248,7 +1256,7 @@ class AutotaskTicketProvider {
   assertConnection(source){if(source!==this.connection())throw new Error('Autotask connection changed. Refresh Tickets before continuing.');}
   async request(path,method='GET',body,readOnly=true,source=this.connection()){
     this.assertConnection(source);const base=new URL(source.base),url=new URL(path,base);const relative=url.pathname.slice(base.pathname.length);
-    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
+    if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname)||url.username||url.password||url.hash||!(/^(Tickets(?:\/(?:query|entityInformation\/fields|\d+(?:\/Notes)?))?|TicketNotes\/(?:query|entityInformation\/fields|\d+)|(?:ResourceServiceDeskRoles|ResourceRoleQueues|TicketSecondaryResources)\/query|Roles\/(?:query|\d+))$/.test(relative)))throw new Error('Rejected unexpected ticket API URL.');
     if(!readOnly&&!((method==='PATCH'&&relative==='Tickets')||(method==='POST'&&/^Tickets\/\d+\/Notes$/.test(relative))))throw new Error('Unsupported ticket write.');
     const result=await source.request(url.href,method,body,readOnly);this.assertConnection(source);return result;
   }
@@ -1264,9 +1272,59 @@ class AutotaskTicketProvider {
   async list(){const source=this.connection(),fields=await this.fields('Tickets',source);const rows=await this.collection('Tickets/query',[{op:'eq',field:'assignedResourceID',value:ticketId(source.resourceId)}],source);const result=[];for(const raw of rows){if(Number(raw.assignedResourceID)!==Number(source.resourceId))throw new Error('Returned ticket is outside the configured primary assignment. Refresh first.');const item=this.normalize(raw,fields);item.organizationName=await source.resolveName('Companies',raw.companyID);item.assigneeName=raw.assignedResourceID==null?'Unassigned':await source.resolveName('Resources',raw.assignedResourceID);this.assertConnection(source);result.push(item);}return result;}
   async get(id,fields=null,source=this.connection()){id=ticketId(typeof id==='object'?id.remoteId:id);const result=await this.request('Tickets/'+id,'GET',undefined,true,source);if(!result.item||Number(result.item.id)!==id)throw new Error('Ticket identity could not be verified.');return this.normalize(result.item,fields||await this.fields('Tickets',source));}
   signature(item){const raw=item.raw||{};return JSON.stringify(['id','status','priority','assignedResourceID','assignedResourceRoleID','assignedResourceroleID','queueID','companyID','title','description','dueDateTime','lastActivityDate','lastTrackedModificationDateTime','resolution'].map(k=>[k,raw[k]??null]));}
-  async update(snapshot,changes){if(!this.enableWrites)throw new Error('Enable ticket updates in Autotask Tickets settings.');const id=ticketId(snapshot.remoteId),keys=Object.keys(changes);if(!keys.length||keys.some(k=>!['status','priority'].includes(k)))throw new Error('This release updates ticket status and priority only.');if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);
-    try{const source=this.connection(),fields=await this.fields('Tickets',source),fresh=await this.get(id,fields,source);if(this.signature(fresh)!==this.signature(snapshot))throw new Error('Ticket changed remotely. Refresh before editing.');const patch={id};for(const key of keys){const field=fields.find(f=>f.name===key),value=ticketId(changes[key],true);if(field?.isReadOnly!==false||!this.choices(fields,key).some(v=>v.id===String(value)))throw new Error('Choose an active, writable ticket '+key+'.');if(Number(fresh.raw[key])!==value)patch[key]=value;}if(Object.keys(patch).length===1)return fresh;
-      await this.request('Tickets','PATCH',patch,false,source);const checked=await this.get(id,fields,source);for(const key of Object.keys(patch).filter(k=>k!=='id'))if(Number(checked.raw[key])!==patch[key])throw new Error('Ticket update readback differs. Inspect Autotask and refresh before retrying.');this.log({event:'autotask.ticket-update-verified'});return checked;
+  /**= Resolve current assignment options; queue membership and service desk roles are separate entities. */
+  async resources(){const source=this.connection(),users=await source.listResources();this.assertConnection(source);return users;}
+  async assignmentOptions(resourceID,fields=null,source=this.connection()){
+    const id=ticketId(resourceID),filter=[{op:'eq',field:'resourceID',value:id}];
+    const memberships=await this.collection('ResourceRoleQueues/query',filter,source),associations=await this.collection('ResourceServiceDeskRoles/query',filter,source);
+    if([...memberships,...associations].some(v=>Number(v.resourceID)!==id))throw new Error('Assignment catalog returned another resource.');
+    const roles=[];for(const roleID of [...new Set(associations.filter(v=>v.isActive===true).map(v=>ticketId(v.roleID)))]){const role=(await this.request('Roles/'+roleID,'GET',undefined,true,source)).item;if(!role||Number(role.id)!==roleID)throw new Error('Role identity could not be verified.');if(role.isActive===true)roles.push({id:String(roleID),label:String(role.name||'#'+roleID)});}
+    const queues=this.choices(fields||await this.fields('Tickets',source),'queueID').filter(q=>memberships.some(v=>String(v.queueID)===q.id));
+    return{roles,queues};
+  }
+  async update(snapshot,changes,options={}){
+    if(!this.enableWrites)throw new Error('Enable ticket updates in Autotask Tickets settings.');
+    const id=ticketId(snapshot.remoteId),keys=Object.keys(changes),allowed=['status','priority','title','description','dueDateTime','assignedResourceID','assignedResourceroleID','queueID'];
+    if(!keys.length||keys.some(k=>!allowed.includes(k)))throw new Error('Unsupported ticket edit field.');
+    if(this.pending.has(id))throw new Error('A ticket action is already running.');this.pending.add(id);
+    try{
+      const source=this.connection(),fields=await this.fields('Tickets',source),fresh=await this.get(id,fields,source);
+      if(this.signature(fresh)!==this.signature(snapshot))throw new Error('Ticket changed remotely. Refresh before editing.');
+      const patch={id};
+      for(const key of keys){
+        let value=changes[key];const field=fields.find(f=>f.name===key);
+        if(field?.isReadOnly!==false)throw new Error('Ticket '+key+' is not writable.');
+        if(['status','priority','queueID'].includes(key)){
+          value=ticketId(value,true);if(!this.choices(fields,key).some(v=>v.id===String(value)))throw new Error('Choose an active, writable ticket '+key+'.');
+        }else if(['assignedResourceID','assignedResourceroleID'].includes(key))value=ticketId(value);
+        else if(key==='dueDateTime'){
+          if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z$/.test(value)||!Number.isFinite(Date.parse(value)))throw new Error('Enter a valid UTC due date/time.');
+          const parsed=new Date(value);if(parsed.toISOString().slice(0,16)!==value.slice(0,16))throw new Error('Enter a valid UTC due date/time.');value=parsed.toISOString();
+        }else{
+          const limit=key==='title'?255:8000;
+          if(typeof value!=='string'||(key==='title'&&!value.trim())||value.length>Math.min(limit,Number(field.length)>0?Number(field.length):limit))throw new Error('Enter a valid ticket '+key+'.');
+          if(key==='title')value=value.trim();
+        }
+        const old=fresh.raw[key];const equal=key==='dueDateTime'?Date.parse(old)===Date.parse(value):['status','priority','queueID','assignedResourceID','assignedResourceroleID'].includes(key)?old!=null&&Number(old)===value:old===value;
+        if(!equal)patch[key]=value;
+      }
+      if(Object.hasOwn(patch,'description')&&options.confirmPlainTextReplacement!==true)throw new Error('Confirm plain-text description replacement: Autotask formatting and embedded images will be lost.');
+      if(['assignedResourceID','assignedResourceroleID','queueID'].some(k=>Object.hasOwn(patch,k))){
+        const resource=ticketId(patch.assignedResourceID??fresh.raw.assignedResourceID),role=ticketId(patch.assignedResourceroleID??fresh.raw.assignedResourceroleID),queue=ticketId(patch.queueID??fresh.raw.queueID,true);
+        const users=await source.listResources();this.assertConnection(source);if(!users.some(u=>String(u.id)===String(resource)))throw new Error('Choose an active named resource.');
+        const available=await this.assignmentOptions(resource,fields,source);
+        if(!available.roles.some(v=>v.id===String(role))||!available.queues.some(v=>v.id===String(queue)))throw new Error('Choose an active service desk role and a queue belonging to the selected resource.');
+        const secondary=await this.collection('TicketSecondaryResources/query',[{op:'eq',field:'ticketID',value:id}],source);
+        if(secondary.some(v=>Number(v.ticketID)!==id))throw new Error('Secondary assignment catalog returned another ticket.');
+        if(secondary.some(v=>Number(v.resourceID)===resource))throw new Error('Selected resource is already secondary. Resolve that assignment in Autotask first.');
+      }
+      if(Object.keys(patch).length===1)return fresh;
+      //= Recheck after assignment lookups; this is optimistic detection, not an atomic API condition.
+      if(this.signature(await this.get(id,fields,source))!==this.signature(fresh))throw new Error('Ticket changed remotely. Refresh before editing.');
+      await this.request('Tickets','PATCH',patch,false,source);
+      const checked=await this.get(id,fields,source);
+      for(const key of Object.keys(patch).filter(k=>k!=='id')){const actual=checked.raw[key],expected=patch[key],same=key==='dueDateTime'?Date.parse(actual)===Date.parse(expected):typeof expected==='number'?actual!=null&&Number(actual)===expected:actual===expected;if(!same)throw new Error('Ticket update readback differs. Inspect Autotask and refresh before retrying.');}
+      this.log({event:'autotask.ticket-update-verified'});return checked;
     }finally{this.pending.delete(id);}
   }
   async notes(id){const source=this.connection(),ticketID=ticketId(typeof id==='object'?id.remoteId:id);await this.get(ticketID,null,source);const rows=await this.collection('TicketNotes/query',[{op:'eq',field:'ticketID',value:ticketID}],source);if(rows.some(n=>Number(n.ticketID)!==ticketID))throw new Error('Autotask returned a note from another ticket.');return rows.sort((a,b)=>String(b.createDateTime||'').localeCompare(String(a.createDateTime||''))||b.id-a.id);}
@@ -1576,9 +1634,50 @@ class ToDoView extends ItemView {
 class AutotaskTicketUpdateModal extends Modal {
   constructor(view,item){super(view.app);this.view=view;this.item=item;this.provider=view.currentProvider();this.closed=false;}
   onClose(){this.closed=true;this.contentEl.empty();}
-  async onOpen(){const el=this.contentEl;el.createEl('h2',{text:`Update ticket ${this.item.ticketNumber||this.item.remoteId}`});el.createEl('p',{text:'Change status or priority only. Autotask permissions, required fields and workflows still apply. Status changes may trigger tenant workflows.'});const status=el.createEl('p');
-    try{const fields=await this.provider.fields();if(this.closed)return;const selected={status:this.item.statusId,priority:this.item.priorityId};for(const name of ['status','priority'])new Setting(el).setName(name==='status'?'Ticket status':'Ticket priority').addDropdown(d=>{const choices=this.provider.choices(fields,name);d.addOption(selected[name],this.item[name+'Name']||'Current value');for(const choice of choices)if(choice.id!==selected[name])d.addOption(choice.id,choice.label);d.setValue(selected[name]).onChange(v=>selected[name]=v);});
-      new Setting(el).addButton(b=>b.setButtonText('Save ticket changes').setCta().onClick(async()=>{b.setDisabled(true);try{if(this.provider!==this.view.currentProvider())throw new Error('Ticket configuration changed. Refresh first.');const changes={};if(selected.status!==this.item.statusId)changes.status=selected.status;if(selected.priority!==this.item.priorityId)changes.priority=selected.priority;if(!Object.keys(changes).length){status.setText('No changes to save.');return;}await this.provider.update(this.item,changes);this.close();await this.view.refresh();}catch(e){if(!this.closed)status.setText(e.message);}finally{b.setDisabled(false);}}));
+  async onOpen(){
+    const el=this.contentEl;el.createEl('h2',{text:`Update ticket ${this.item.ticketNumber||this.item.remoteId}`});
+    el.createEl('p',{text:'Edit supported ticket fields. Autotask permissions and workflows still apply. Reassigned tickets may leave this list after refresh.'});const status=el.createEl('p');
+    try{
+      const fields=await this.provider.fields();if(this.closed)return;
+      const raw=this.item.raw||{},selected={status:this.item.statusId,priority:this.item.priorityId},changes={};let confirmPlainTextReplacement=false,descriptionEnabled=false,assignmentEnabled=false,assignmentReady=false,assignmentGeneration=0;
+      for(const name of ['status','priority'])new Setting(el).setName(name==='status'?'Ticket status':'Ticket priority').addDropdown(d=>{const choices=this.provider.choices(fields,name);d.addOption(selected[name],this.item[name+'Name']||'Current value');for(const choice of choices)if(choice.id!==selected[name])d.addOption(choice.id,choice.label);d.setValue(selected[name]).onChange(v=>selected[name]=v);});
+      new Setting(el).setName('Ticket title').setDesc('Change the ticket name; maximum 255 characters, subject to tenant metadata.').addText(t=>t.setValue(this.item.title||'').onChange(v=>changes.title=v));
+      const dueValue=this.item.due?toCalendarValue(this.item.due).slice(0,16):'';
+      new Setting(el).setName('Ticket due date / time').setDesc(`Local timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Hours and minutes only; unchanged precision is retained.`).addText(t=>{t.inputEl.type='datetime-local';t.inputEl.step='60';t.setValue(dueValue).onChange(v=>{if(v===dueValue)delete changes.dueDateTime;else changes.dueDateTime=v;});});
+      const descriptionArea=el.createDiv();
+      new Setting(el).setName('Replace ticket description').setDesc('Optional destructive replacement: Autotask formatting and embedded images will be lost. Leave off to preserve them.').addToggle(t=>t.setValue(false).onChange(v=>{
+        descriptionEnabled=v;confirmPlainTextReplacement=false;delete changes.description;descriptionArea.empty();if(!v)return;
+        descriptionArea.createEl('p',{text:'Autotask returns a plain-text description. Saving a changed description replaces all existing rich text and images.'});
+        new Setting(descriptionArea).setName('Ticket description (plain text)').addTextArea(a=>a.setValue(this.item.description||'').onChange(value=>{if(value===(this.item.description||''))delete changes.description;else changes.description=value;}));
+        new Setting(descriptionArea).setName('I accept losing description formatting and images').addToggle(a=>a.setValue(false).onChange(value=>confirmPlainTextReplacement=value));
+      }));
+      const assignmentArea=el.createDiv();const assignment={assignedResourceID:String(raw.assignedResourceID??''),assignedResourceroleID:String(raw.assignedResourceroleID??''),queueID:String(raw.queueID??'')};
+      new Setting(el).setName('Change ticket assignment').setDesc('Choose an active resource, service desk role and resource queue. Existing secondary assignments are not removed.').addToggle(t=>t.setValue(false).onChange(async enabled=>{
+        assignmentEnabled=enabled;assignmentReady=false;const generation=++assignmentGeneration;assignmentArea.empty();if(!enabled)return;
+        const message=assignmentArea.createEl('p',{text:'Loading resources…'}),dependent=assignmentArea.createDiv();
+        try{
+          const users=await this.provider.resources();if(this.closed||generation!==assignmentGeneration)return;
+          const load=async()=>{assignmentReady=false;dependent.empty();message.setText('Loading roles and queues…');const requested=assignment.assignedResourceID;
+            try{const available=await this.provider.assignmentOptions(requested,fields);if(this.closed||generation!==assignmentGeneration||requested!==assignment.assignedResourceID)return;
+              for(const [key,label,list]of [['assignedResourceroleID','Ticket resource role',available.roles],['queueID','Ticket queue',available.queues]])new Setting(dependent).setName(label).addDropdown(d=>{d.addOption('','Choose explicitly');for(const option of list)d.addOption(option.id,option.label);if(!list.some(v=>v.id===assignment[key]))assignment[key]='';d.setValue(assignment[key]).onChange(v=>assignment[key]=v);});
+              assignmentReady=true;message.setText('Assignment choices are revalidated when saved.');
+            }catch(e){if(!this.closed&&generation===assignmentGeneration&&requested===assignment.assignedResourceID)message.setText(e.message);}
+          };
+          new Setting(assignmentArea).setName('Assigned resource').addDropdown(d=>{d.addOption('','Choose resource');for(const user of users)d.addOption(String(user.id),user.label||user.name);d.setValue(assignment.assignedResourceID).onChange(async v=>{assignment.assignedResourceID=v;assignment.assignedResourceroleID='';assignment.queueID='';await load();});});
+          if(assignment.assignedResourceID)await load();else message.setText('Choose a resource.');
+        }catch(e){if(!this.closed&&generation===assignmentGeneration)message.setText(e.message);}
+      }));
+      new Setting(el).addButton(b=>b.setButtonText('Save ticket changes').setCta().onClick(async()=>{
+        b.setDisabled(true);try{
+          if(this.provider!==this.view.currentProvider())throw new Error('Ticket configuration changed. Refresh first.');
+          const payload={...changes};if(!descriptionEnabled)delete payload.description;if(Object.hasOwn(payload,'description')&&!confirmPlainTextReplacement)throw new Error('Accept description formatting and image loss before saving.');
+          if(Object.hasOwn(payload,'dueDateTime'))payload.dueDateTime=fromCalendarValue(payload.dueDateTime,'local');
+          if(selected.status!==this.item.statusId)payload.status=selected.status;if(selected.priority!==this.item.priorityId)payload.priority=selected.priority;
+          if(assignmentEnabled){if(!assignmentReady||Object.values(assignment).some(v=>!v))throw new Error('Choose a resource, role and queue after the assignment choices have loaded.');for(const [key,value]of Object.entries(assignment))if(String(raw[key]??'')!==value)payload[key]=value;}
+          if(!Object.keys(payload).length){status.setText('No changes to save.');return;}
+          await this.provider.update(this.item,payload,{confirmPlainTextReplacement});this.close();await this.view.refresh();
+        }catch(e){if(!this.closed)status.setText(e.message);}finally{b.setDisabled(false);}
+      }));
     }catch(e){if(!this.closed)status.setText(e.message);}
   }
 }
@@ -1599,7 +1698,7 @@ class AutotaskTicketsView extends ToDoView {
   currentProvider(){return this.plugin.registry.get('autotask-tickets');}async loadItems(provider){return provider.list();}
   toolbar(el){this.panelToolbar(el).addButton(b=>{b.setButtonText('New task').setDisabled(true);b.buttonEl?.setAttribute('title','Ticket creation is deferred; use Autotask to create tickets.');}).addButton(b=>b.setButtonText('Refresh').onClick(()=>this.refresh())).addButton(b=>b.setButtonText('Connect').onClick(()=>new ConnectModal(this.plugin,()=>this.plugin.openTicketsView()).open()));}
   renderItems(items,el,provider){const controls=new Setting(el),holder=el.createDiv();const pref=()=>this.plugin.settings.viewPreferences[TICKET_VIEW];const draw=()=>{holder.empty();const p=pref();super.renderItems(items.filter(item=>(!p.ticketStatus||item.statusId===p.ticketStatus)&&(!p.ticketPriority||item.priorityId===p.ticketPriority)&&(!p.ticketQueue||String(item.raw?.queueID??'')===p.ticketQueue)),holder,provider);};for(const [key,label,idField,nameField]of [['ticketStatus','Status','statusId','statusName'],['ticketPriority','Priority','priorityId','priorityName'],['ticketQueue','Queue','queueID','queueName']])controls.addDropdown(d=>{d.addOption('','All '+label.toLowerCase()+' values');const seen=new Set();for(const item of items){const id=key==='ticketQueue'?String(item.raw?.queueID??''):item[idField];if(id&&!seen.has(id)){d.addOption(id,item[nameField]||id);seen.add(id);}}d.setValue(pref()[key]||'').onChange(async v=>{pref()[key]=v;draw();try{await this.plugin.persist();}catch(e){new Notice(e.message);}});});draw();}
-  taskActions(card,item,provider){card.createEl('small',{text:[item.organizationName,item.assigneeName,item.queueName].filter(Boolean).join(' · ')});hintElement(card.createEl('small',{text:'Ticket status: '+item.statusName+' · Priority: '+item.priorityName}),`Status: ${item.statusName} (#${item.statusId})\nPriority: ${item.priorityName} (#${item.priorityId})\nQueue: ${item.queueName} (#${item.raw?.queueID??'unassigned'})\nUse Update ticket to change status or priority.`,setTooltip);const controls=new Setting(card);if(provider.enableWrites)controls.addButton(b=>b.setButtonText('Update ticket').onClick(()=>new AutotaskTicketUpdateModal(this,item).open()));controls.addButton(b=>b.setButtonText('Ticket notes').onClick(()=>new AutotaskTicketNotesModal(this,item).open()));}
+  taskActions(card,item,provider){card.createEl('small',{text:[item.organizationName,item.assigneeName,item.queueName].filter(Boolean).join(' · ')});hintElement(card.createEl('small',{text:'Ticket status: '+item.statusName+' · Priority: '+item.priorityName}),`Status: ${item.statusName} (#${item.statusId})\nPriority: ${item.priorityName} (#${item.priorityId})\nQueue: ${item.queueName} (#${item.raw?.queueID??'unassigned'})\nUse Update ticket to edit title, description, due date, status, priority or assignment.`,setTooltip);const controls=new Setting(card);if(provider.enableWrites)controls.addButton(b=>b.setButtonText('Update ticket').onClick(()=>new AutotaskTicketUpdateModal(this,item).open()));controls.addButton(b=>b.setButtonText('Ticket notes').onClick(()=>new AutotaskTicketNotesModal(this,item).open()));}
 }
 class MicrosoftSignInModal extends Modal {
   constructor(plugin) { super(plugin.app); this.plugin = plugin; this.cancelled = false; this.auth = null; }
@@ -2060,8 +2159,8 @@ class Settings extends PluginSettingTab {
     }));
     new Setting(el).addButton(b=>b.setButtonText('Connect Autotask').onClick(()=>new ConnectModal(this.plugin).open())).addButton(b=>b.setButtonText('Open Autotask tasks').onClick(()=>this.plugin.openView()));
   }
-  tickets(el){el.createEl('p',{text:'Service Desk Tickets share the Autotask connection and Assigned resource ID. CRM To-Dos remain a separate provider. This release retrieves primary assignments; ticket creation, reassignment, time entries and cross-sync are deferred.'});
-    new Setting(el).setName('Enable ticket updates').setDesc('Separately enable explicit status/priority changes and native ticket notes. Autotask workflows and API permissions apply.').addToggle(t=>t.setValue(this.plugin.settings.autotaskTickets.enableWrites).onChange(async value=>{const before=this.plugin.settings.autotaskTickets.enableWrites;try{this.plugin.settings.autotaskTickets.enableWrites=value;await this.plugin.persist();this.plugin.installTickets();for(const leaf of this.app.workspace.getLeavesOfType(TICKET_VIEW))leaf.view.refresh();}catch(e){this.plugin.settings.autotaskTickets.enableWrites=before;new Notice(e.message);}}));
+  tickets(el){el.createEl('p',{text:'Service Desk Tickets share the Autotask connection and Assigned resource ID. CRM To-Dos remain a separate provider. This release retrieves primary assignments; ticket creation, time entries and cross-sync are deferred. Title, description, due date and validated reassignment are available through Update ticket.'});
+    new Setting(el).setName('Enable ticket updates').setDesc('Separately enable supported ticket edits, reassignment and native ticket notes. Autotask workflows and API permissions apply.').addToggle(t=>t.setValue(this.plugin.settings.autotaskTickets.enableWrites).onChange(async value=>{const before=this.plugin.settings.autotaskTickets.enableWrites;try{this.plugin.settings.autotaskTickets.enableWrites=value;await this.plugin.persist();this.plugin.installTickets();for(const leaf of this.app.workspace.getLeavesOfType(TICKET_VIEW))leaf.view.refresh();}catch(e){this.plugin.settings.autotaskTickets.enableWrites=before;new Notice(e.message);}}));
     new Setting(el).setName('Completed ticket status IDs').setDesc('Optional comma-separated status IDs classified as completed by this panel. Blank uses completedDate. Hover ticket status details to see IDs. No IDs or translated labels are assumed.').addText(t=>t.setValue(this.plugin.settings.autotaskTickets.closedStatusIds).onChange(async value=>{try{ticketStatusIds(value);this.plugin.settings.autotaskTickets.closedStatusIds=value;await this.plugin.persist();this.plugin.installTickets();for(const leaf of this.app.workspace.getLeavesOfType(TICKET_VIEW))leaf.view.refresh();}catch(e){new Notice(e.message);}}));
     new Setting(el).addButton(b=>b.setButtonText('Connect Autotask').onClick(()=>new ConnectModal(this.plugin,()=>this.plugin.openTicketsView()).open())).addButton(b=>b.setButtonText('Open Autotask tickets').onClick(()=>this.plugin.openTicketsView()));
   }

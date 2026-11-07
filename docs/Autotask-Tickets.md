@@ -13,7 +13,7 @@ url: https://github.com/LaurentFough/obsTask2Do
 draft: true
 tags: [task2do, obsidian, autotask, tickets, preview]
 keywords: [Service Desk, status, priority, notes, visibility, reconciliation, handoff]
-plugin-version: 0.9.0-alpha.2
+plugin-version: 0.9.0-alpha.4
 baseline-version: 0.8.0-alpha.2
 ---
 
@@ -43,11 +43,17 @@ If no IDs are configured, the panel uses the ticket's completion timestamp for i
 
 Enable **Autotask Tickets → Enable ticket updates** after validating reads. This switch is independent of **Enable To-Do updates**; enabling CRM writes alone does not enable ticket writes.
 
-**Update ticket** opens named status/priority choices from current field metadata. Saving sends only the changed status/priority fields with the ticket ID, after checking a fresh source snapshot. It then reads the ticket back. The description, title, assignment, company, resolution, billing fields and existing notes are not copied back by this writer.
+**Update ticket** edits title, due date/time, status and priority. Calendar inputs use the local timezone and hours/minutes; unchanged date precision is preserved. Changed dates are sent in UTC. Due-date clearing is not supported. Title and description lengths and writability are checked against tenant metadata and documented limits (255 and 8,000 characters respectively).
+
+**Replace ticket description** is optional. It reveals the plain-text editor and a separate acceptance toggle for losing formatting and embedded images. Unchanged descriptions are never sent. Changed descriptions require acceptance in both the UI and provider layer; use native ticket notes if replacement is inappropriate.
+
+**Change ticket assignment** loads active named resources, active service-desk roles and queue memberships. Choose the resource, role and queue explicitly. The provider revalidates these against fresh catalogs and checks secondary assignments before writing. This editor conservatively requires the selected queue to belong to the resource. It does not remove a secondary assignment or support unassigning the primary resource/role/queue. Missing catalog permissions block reassignment without blocking unrelated text/status edits. Role changes can affect billing rates; reassignment can change co-managed behavior under Autotask rules. A ticket reassigned away from the configured resource leaves this list after refresh.
+
+Saving sends only changed supported fields with the ticket ID, checks the source snapshot again after catalog lookups, and verifies readback. Company, resolution, billing fields and existing notes are not sent. Failed or uncertain writes are not automatically retried; inspect Autotask and refresh before another attempt.
 
 To close or reopen a ticket, choose the appropriate tenant status rather than expecting a universal Complete/Reopen transition. Autotask still enforces permissions and required fields. A workflow requiring a resolution, work type or other unsupported field may reject the minimal update; complete that operation in Autotask.
 
-The vendor documents that ticket API updates can overwrite rich-text fields with plain text and that API completion can bypass incomplete Important checklist items. This preview avoids description edits; review checklist/workflow requirements in Autotask before selecting a completion status. The fresh comparison is optimistic protection, not a server-side conditional transaction. If an update fails or its readback differs, inspect the source and refresh before submitting again.
+The vendor documents that ticket API updates can overwrite rich-text fields with plain text and that API completion can bypass incomplete Important checklist items. Description replacement is opt-in; review checklist/workflow requirements in Autotask before selecting a completion status. The fresh comparison is optimistic protection, not a server-side conditional transaction. If an update fails or its readback differs, inspect the source and refresh before submitting again.
 
 ## Native ticket notes
 
@@ -74,19 +80,19 @@ A matching fingerprint alone is not proof of which of several identical notes wa
 | --- | --- |
 | Primary-assigned tickets and company/resource display names | Secondary assignments, all-queue and delegated scopes |
 | Ticket-number search, state/status/priority/queue filters, due sorting | Server-side full-tenant search or custom query builder |
-| Explicit status and priority updates with readback | Creation, reassignment/roles, title/description/company editing |
+| Title, explicit plain-text description replacement, due date, status/priority and validated primary reassignment | Creation, company editing, unassignment and broader web-app parity |
 | Native note retrieval and journaled creation/reconciliation | Existing-note edits, attachments and time entries |
 | Optional Markdown snapshot on panel refresh | Ticket import into todo.txt, publishing and scheduled cross-sync |
 
 No live Autotask request was made with the owner's credentials while building this preview. Automated fixtures and host mocks validate the implementation, not your Service Desk permissions or workflow. Start with disposable tickets and internal-only notes before operational use.
 
-## Merge and publication
+## Original integration history and publication
 
 Version **0.9.0-alpha.2** merges the ticket integration onto the owner's supplied repository history at `2bdac131f0a9765e7dce74b7b3fbb320b1bf7403`. The earlier preview used the saved 0.8.0-alpha.2 baseline; the updated source was subsequently supplied on GitHub main. Existing labels, capitalization and both Guide files are preserved. Their ticket sections link to this addendum.
 
 The branch is `feature/autotask-tickets-merge`. Review its changes before merging. No unrelated history or existing tag is replaced. A local alpha package can be tested while GitHub review/publication is pending.
 
-The release workflow expects the exact manifest-version tag **0.9.0-alpha.2** without a v prefix. Creating a review branch does not itself publish a release; appcast URLs remain prepared asset locations until the release workflow uploads the assets.
+The current release workflow uses the manifest version (**0.9.0-alpha.4**) by default for manual runs; exact-version tag pushes remain supported without a v prefix. Creating a review branch does not itself publish a release; appcast URLs remain prepared asset locations until the release workflow uploads the assets.
 
 Validation commands:
 
@@ -127,4 +133,14 @@ The merged source passes **174 automated tests**. Live Autotask tenant/Swagger a
   url = {https://autotask.net/help/developerhelp/content/apis/rest/General_Topics/REST_Swagger_UI.htm},
   urldate = {2026-11-06}
 }
+```
+
+## Editor acceptance checklist
+
+Use disposable tickets to check: title-only updates preserve rich text; changed due times agree with Autotask after local/UTC conversion; unchanged timestamps retain precision; description replacement requires explicit acceptance; reassignment offers active named resources and valid roles/queues; secondary-resource collisions refuse writes; reassigned tickets disappear from the primary-assigned panel as expected. Test API permissions, work-type requirements and tenant workflows before operational use. Live tenant validation remains pending.
+
+```bibtex
+@online{autotaskServiceDeskRoles2026, author={Kaseya}, title={ResourceServiceDeskRoles}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/ResourceServiceDeskRolesEntity.htm}, urldate={2026-11-06}}
+@online{autotaskResourceQueues2026, author={Kaseya}, title={ResourceRoleQueues}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/ResourceRoleQueuesEntity.htm}, urldate={2026-11-06}}
+@online{autotaskTicketSecondary2026, author={Kaseya}, title={TicketSecondaryResources}, url={https://www.autotask.net/help/developerhelp/content/apis/REST/Entities/TicketSecondaryResourcesEntity.htm}, urldate={2026-11-06}}
 ```

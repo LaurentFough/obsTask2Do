@@ -1,5 +1,5 @@
 'use strict';
-/**= Version 0.9.0-alpha.4. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
+/**= Version 0.9.0-alpha.5. Service Desk tickets share the Autotask session, not CRM To-Do semantics. */
 function ticketId(value,allowZero=false){if(!new RegExp(allowZero?'^(0|[1-9]\\d*)$':'^[1-9]\\d*$').test(String(value))||!Number.isSafeInteger(Number(value)))throw new Error('Enter a valid numeric Autotask ID.');return Number(value);}
 function ticketStatusIds(value=''){return [...new Set(String(value).split(/[\s,;]+/).filter(Boolean).map(v=>String(ticketId(v,true))))];}
 class AutotaskTicketProvider {
@@ -26,7 +26,26 @@ class AutotaskTicketProvider {
   }
   normalize(raw,fields=[]){const id=ticketId(raw.id),status=String(ticketId(raw.status,true)),label=name=>this.choices(fields,name).find(v=>v.id===String(raw[name]))?.label||`${name} #${raw[name]??'unknown'}`;
     return{provider:this.id,remoteId:String(id),ticketNumber:raw.ticketNumber||String(id),title:raw.title||'',description:raw.description||'',companyId:raw.companyID,assigneeId:raw.assignedResourceID,creatorId:raw.creatorResourceID,due:raw.dueDateTime,completed:this.closedStatusIds.length?this.closedStatusIds.includes(status):!!raw.completedDate,statusId:status,statusName:label('status'),priorityId:String(raw.priority??''),priorityName:label('priority'),queueName:label('queueID'),completedAt:raw.completedDate,modified:raw.lastActivityDate,raw};}
-  async list(){const source=this.connection(),fields=await this.fields('Tickets',source);const rows=await this.collection('Tickets/query',[{op:'eq',field:'assignedResourceID',value:ticketId(source.resourceId)}],source);const result=[];for(const raw of rows){if(Number(raw.assignedResourceID)!==Number(source.resourceId))throw new Error('Returned ticket is outside the configured primary assignment. Refresh first.');const item=this.normalize(raw,fields);item.organizationName=await source.resolveName('Companies',raw.companyID);item.assigneeName=raw.assignedResourceID==null?'Unassigned':await source.resolveName('Resources',raw.assignedResourceID);this.assertConnection(source);result.push(item);}return result;}
+  /**= Explicit primary-assignee scopes are fetched remotely; never broaden an empty selection. */
+  async list(resourceIDs=null){
+    const source=this.connection();let ids;
+    if(resourceIDs===null)ids=[ticketId(source.resourceId)];
+    else{
+      if(!Array.isArray(resourceIDs)||!resourceIDs.length||resourceIDs.length>50)throw new Error('Select between 1 and 50 ticket assignees.');
+      ids=[...new Set(resourceIDs.map(v=>ticketId(v)))];
+      const users=await this.resources();if(ids.some(id=>!users.some(u=>String(u.id)===String(id))))throw new Error('A selected assignee is no longer available. Edit the assignment filter.');
+    }
+    const fields=await this.fields('Tickets',source),result=[],seen=new Set();
+    for(const resourceID of ids){
+      const rows=await this.collection('Tickets/query',[{op:'eq',field:'assignedResourceID',value:resourceID}],source);
+      for(const raw of rows){
+        if(Number(raw.assignedResourceID)!==resourceID)throw new Error('Returned ticket is outside the selected primary assignment. Refresh first.');
+        if(seen.has(ticketId(raw.id)))throw new Error('Ticket assignment changed during retrieval. Refresh before continuing.');seen.add(ticketId(raw.id));
+        const item=this.normalize(raw,fields);item.organizationName=await source.resolveName('Companies',raw.companyID);item.assigneeName=await source.resolveName('Resources',raw.assignedResourceID);this.assertConnection(source);result.push(item);
+      }
+    }
+    return result;
+  }
   async get(id,fields=null,source=this.connection()){id=ticketId(typeof id==='object'?id.remoteId:id);const result=await this.request('Tickets/'+id,'GET',undefined,true,source);if(!result.item||Number(result.item.id)!==id)throw new Error('Ticket identity could not be verified.');return this.normalize(result.item,fields||await this.fields('Tickets',source));}
   signature(item){const raw=item.raw||{};return JSON.stringify(['id','status','priority','assignedResourceID','assignedResourceRoleID','assignedResourceroleID','queueID','companyID','title','description','dueDateTime','lastActivityDate','lastTrackedModificationDateTime','resolution'].map(k=>[k,raw[k]??null]));}
   /**= Resolve current assignment options; queue membership and service desk roles are separate entities. */

@@ -13,7 +13,7 @@ url: https://github.com/LaurentFough/obsTask2Do
 draft: true
 tags: [task2do, obsidian, autotask, tickets, preview]
 keywords: [Service Desk, status, priority, notes, visibility, reconciliation, handoff]
-plugin-version: 0.9.0-alpha.4
+plugin-version: 0.9.0-alpha.5
 baseline-version: 0.8.0-alpha.2
 ---
 
@@ -28,10 +28,20 @@ The implementation is on `feature/autotask-tickets-merge`, based on the owner's 
 1. Install/reload the preview assets in `.obsidian/plugins/task2do`, preserving data.json, credentials.enc and task/state files.
 2. Configure or unlock the existing **Autotask** connection. Confirm the zone REST URL and the human Assigned Resource ID. The API user must have Service Desk ticket permissions.
 3. Run **Task2Do: Open Autotask Tickets**, or select **Autotask Tickets** from Providers.
-4. Verify ticket numbers, company, assignee, status, priority, queue and dates against Autotask. Retrieval covers **primary assignments** for that configured resource. Secondary-resource assignments and delegated/creator scopes are not included.
+4. Verify ticket numbers, company, assignee, status, priority, queue and dates against Autotask. Retrieval defaults to **primary assignments** for that configured resource; use Assignment filter to select another user or set of users. Secondary-resource assignments and delegated/creator scopes are not included.
 5. Use the status, priority and queue dropdowns to filter the retrieved list, plus the existing state/search/due-sort controls. Search includes the human ticket number, title, description, names and ticket metadata. Queue filters do not retrieve other resources' queues or tickets.
 
-The panel queries all matching primary assignments with pagination and refuses incomplete/cyclic results. Historical assignments can make the first load slow in a large tenant. It does not cache or preload the full ticket-note history; notes are loaded on demand.
+The panel queries all matching selected primary assignments with pagination and refuses incomplete/cyclic results. Historical assignments can make the first load slow in a large tenant. It does not cache or preload the full ticket-note history; notes are loaded on demand.
+
+## Assignment filter
+
+Use **Assignment filter** in the Tickets toolbar. Choose **Me**, **A selected user**, or **A selected group of users**. Me means the shared Autotask connection's configured **Assigned Resource ID**, not the API account or an inferred signed-in user.
+
+The picker uses named active Autotask resources. For a group, search names and toggle the users to include, then **Apply assignment filter**. Search only narrows the picker display; it retains selected users. Select between 1 and 50 users. The saved group is a set of user IDs for this panel, not a native Autotask security group, department or queue.
+
+The selection persists across reloads. Custom selections are checked against the current available users on refresh, then queried separately with pagination and strict primary-assignee checks. If any query fails or returns inconsistent scope, the panel shows an error instead of a partial list. Empty or unavailable selections never become an all-ticket query. Use Assignment filter to repair a stale selection or reset to Me. Catalog permission failures do not block returning to Me.
+
+Existing status, priority, queue, state, search and sorting controls apply to the retrieved selection. API security permissions still limit visibility; this feature does not grant additional access. Large groups and historic ticket collections can be slow. Optional Markdown snapshots now reflect the selected ticket scope when the panel refreshes; review the choice before sharing an index.
 
 ## Completion classification
 
@@ -78,7 +88,7 @@ A matching fingerprint alone is not proof of which of several identical notes wa
 
 | Included | Deferred |
 | --- | --- |
-| Primary-assigned tickets and company/resource display names | Secondary assignments, all-queue and delegated scopes |
+| Primary-assigned tickets for Me, a named user or selected user group; company/resource names | Secondary assignments, native group memberships, all-queue and delegated scopes |
 | Ticket-number search, state/status/priority/queue filters, due sorting | Server-side full-tenant search or custom query builder |
 | Title, explicit plain-text description replacement, due date, status/priority and validated primary reassignment | Creation, company editing, unassignment and broader web-app parity |
 | Native note retrieval and journaled creation/reconciliation | Existing-note edits, attachments and time entries |
@@ -92,7 +102,7 @@ Version **0.9.0-alpha.2** merges the ticket integration onto the owner's supplie
 
 The branch is `feature/autotask-tickets-merge`. Review its changes before merging. No unrelated history or existing tag is replaced. A local alpha package can be tested while GitHub review/publication is pending.
 
-The current release workflow uses the manifest version (**0.9.0-alpha.4**) by default for manual runs; exact-version tag pushes remain supported without a v prefix. Creating a review branch does not itself publish a release; appcast URLs remain prepared asset locations until the release workflow uploads the assets.
+The current release workflow uses the manifest version (**0.9.0-alpha.5**) by default for manual runs; exact-version tag pushes remain supported without a v prefix. Creating a review branch does not itself publish a release; appcast URLs remain prepared asset locations until the release workflow uploads the assets.
 
 Validation commands:
 

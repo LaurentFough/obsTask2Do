@@ -24,7 +24,7 @@ Task2Do is distributed as GitHub release assets. BRAT downloads the published `m
 1. Commit the intended source and generated `main.js`. Keep the same version in `manifest.json` and `package.json`; add that version and its minimum Obsidian version to `versions.json`.
 2. Push to the intended branch. For the current alpha-only project, `main` is the normal release source.
 3. Open [Actions → Release Task2Do](https://github.com/LaurentFough/obsTask2Do/actions/workflows/release.yml).
-4. Click **Run workflow**, select the intended branch, and leave the version field blank to use `manifest.json` automatically (currently `0.9.0-alpha.4`). Optionally enter the exact version as a confirmation; surrounding whitespace is ignored. Do not add a `v` prefix.
+4. Click **Run workflow**, select the intended branch, and leave the version field blank to use `manifest.json` automatically (currently `0.9.0-alpha.5`). Optionally enter the exact version as a confirmation; surrounding whitespace is ignored. Do not add a `v` prefix.
 5. Run the workflow and inspect its result. It validates versions, rebuilds and checks the committed bundle, runs syntax checks and tests, and prepares the assets.
 6. After validation, it creates the exact-version tag when missing, creates a draft release, uploads all four assets, and publishes the release. Versions containing a hyphen are marked as prereleases.
 7. Verify the published release contains `main.js`, `manifest.json`, `styles.css` and `appcast.json`, then test installation in a disposable desktop vault through BRAT.

@@ -85,3 +85,19 @@ test('ticket edits never retry uncertain writes and compare string readback exac
  f.source.request=async(...args)=>{if(args[1]==='PATCH')return{itemId:55};return request(...args);};
  await assert.rejects(f.provider.update(snapshot,{title:'New'}),/readback differs/);
 });
+
+test('ticket assignment selection queries each selected primary resource and preserves default Me',async()=>{
+ const f=fixture(),original=f.source.request;f.source.listResources=async()=>[{id:'123',label:'Me'},{id:'456',label:'Colleague'}];
+ f.source.request=async(url,method,body,readOnly)=>{if(url.endsWith('Tickets/query')){f.calls.push({path:'Tickets/query',method,body,readOnly});const id=body.filter[0].value;return{items:[{...f.raw,id:id===123?55:56,assignedResourceID:id}]};}return original(url,method,body,readOnly);};
+ assert.equal((await f.provider.list()).length,1);f.calls.length=0;
+ const tickets=await f.provider.list(['123','456','456']);assert.deepEqual(tickets.map(t=>t.remoteId),['55','56']);
+ assert.deepEqual(f.calls.filter(c=>c.path==='Tickets/query').map(c=>c.body.filter[0].value),[123,456]);assert.ok(!f.calls.some(c=>!c.readOnly));
+});
+test('empty, malformed, oversized or unavailable assignee selections never broaden ticket queries',async()=>{
+ const f=fixture();f.source.listResources=async()=>[{id:'123'}];
+ for(const ids of [[],[''],['123 OR 1=1'],['456'],Array(51).fill('123')])await assert.rejects(f.provider.list(ids));
+ assert.ok(!f.calls.some(c=>c.path==='Tickets/query'));
+});
+test('custom ticket queries reject tickets outside each requested assignee scope',async()=>{
+ const f=fixture();f.source.listResources=async()=>[{id:'456'}];await assert.rejects(f.provider.list(['456']),/outside the selected primary assignment/);
+});

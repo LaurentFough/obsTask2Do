@@ -1,7 +1,7 @@
 {
   "id": "task2do",
   "name": "Task2Do",
-  "version": "0.9.0-alpha.4",
+  "version": "0.9.0-alpha.5",
   "minAppVersion": "1.7.2",
   "description": "Local-first todo.txt tasks with optional Autotask CRM To-Dos, Service Desk Tickets and Microsoft integrations.",
   "author": "LaurentFough",

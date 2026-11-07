@@ -13,18 +13,18 @@ url: https://github.com/LaurentFough/obsTask2Do
 draft: true
 tags: [task2do, obsidian, todo-txt, task-management, autotask, microsoft-graph, planner, openproject, moovila]
 keywords: [local-first, provider, mapping, preview, synchronization, credentials, configuration, recovery]
-plugin-version: 0.9.0-alpha.4
+plugin-version: 0.9.0-alpha.5
 ---
 
 # Task2Do Guide
 
 [TOC]
 
-This guide describes **Task2Do 0.9.0-alpha.4**, an alpha desktop plugin for Obsidian. It covers implemented behavior; future work is identified explicitly. Check the version at the top of **Settings → Task2Do** when comparing your installation with this guide.
+This guide describes **Task2Do 0.9.0-alpha.5**, an alpha desktop plugin for Obsidian. It covers implemented behavior; future work is identified explicitly. Check the version at the top of **Settings → Task2Do** when comparing your installation with this guide.
 
-## Autotask Tickets — 0.9.0-alpha.4
+## Autotask Tickets — 0.9.0-alpha.5
 
-A separate **Task2Do: Autotask Tickets** panel now reads tickets primarily assigned to the configured **Assigned Resource ID**, sharing the existing Autotask connection. The **Autotask Tickets** settings pane has its own write switch, off by default. It supports ticket search, status/priority/queue filters, title/description/due-date edits, validated reassignment, status/priority updates and native ticket notes with selected visibility and uncertain-write reconciliation.
+A separate **Task2Do: Autotask Tickets** panel now reads primary-assigned tickets for Me, a selected user or a selected set of users, sharing the existing Autotask connection. The **Autotask Tickets** settings pane has its own write switch, off by default. It supports ticket search, status/priority/queue filters, title/description/due-date edits, validated reassignment, status/priority updates and native ticket notes with selected visibility and uncertain-write reconciliation.
 
 See the [ticket setup, limits and recovery guide](docs/Autotask-Tickets.md) before enabling writes. Ticket creation, time entries and cross-sync remain deferred. Title, description, due date and primary reassignment are now editable. Existing CRM To-Do behavior is retained. This version merges the owner's revised labels and Guide with the ticket feature; live tenant validation is still pending.
 

@@ -268,3 +268,26 @@ test('ticket due editor converts local minutes to UTC without submitting other u
  const added=controls.slice(offset),calendar=added.find(c=>c.inputEl.type==='datetime-local');assert.equal(calendar.inputEl.step,'60');calendar.change('2026-11-12T09:45');
  await added.find(c=>c.text==='Save ticket changes').click();assert.equal(writes.length,1);assert.equal(writes[0].dueDateTime,new Date(2026,10,12,9,45).toISOString());assert.equal(Object.keys(writes[0]).length,1);plugin.onunload();
 });
+
+test('ticket assignment filter selects users, persists a group and resets to Me',async()=>{
+ const {plugin,views,controls,modals}=await harness(),scopes=[];
+ const provider={id:'autotask-tickets',enableWrites:false,capabilities:{read:true,update:false},list:async ids=>{scopes.push(ids);return[];},resources:async()=>[{id:'123',label:'First User'},{id:'456',label:'Second User'}]};plugin.registry.register(provider);
+ const view=views.get('task2do-autotask-tickets-view')({app:plugin.app});await view.onOpen();assert.equal(scopes.at(-1),undefined);
+ let offset=controls.length;controls.find(c=>c.text==='Assignment filter').click();await modals[0].openPromise;
+ let added=controls.slice(offset);added.find(c=>c.type==='dropdown'&&c.options.group).change('group');const toggles=controls.slice(offset).filter(c=>c.type==='toggle');toggles[0].change(true);toggles[1].change(true);
+ await added.find(c=>c.text==='Apply assignment filter').click();assert.deepEqual(Array.from(scopes.at(-1)),['123','456']);assert.equal(plugin.settings.viewPreferences['task2do-autotask-tickets-view'].ticketAssignmentMode,'group');
+ offset=controls.length;controls.filter(c=>c.text==='Assignment filter').at(-1).click();await modals[1].openPromise;added=controls.slice(offset);added.find(c=>c.type==='dropdown'&&c.options.group).change('me');await added.find(c=>c.text==='Apply assignment filter').click();assert.equal(scopes.at(-1),undefined);plugin.onunload();
+});
+test('ticket assignment filter supports one user and refuses an empty selection',async()=>{
+ const {plugin,views,controls,modals}=await harness(),scopes=[];
+ const provider={id:'autotask-tickets',enableWrites:false,capabilities:{read:true,update:false},list:async ids=>{scopes.push(ids);return[];},resources:async()=>[{id:'456',label:'Second User'}]};plugin.registry.register(provider);
+ const view=views.get('task2do-autotask-tickets-view')({app:plugin.app});await view.onOpen();const offset=controls.length;controls.find(c=>c.text==='Assignment filter').click();await modals[0].openPromise;
+ const added=controls.slice(offset);added.find(c=>c.type==='dropdown'&&c.options.user).change('user');await added.find(c=>c.text==='Apply assignment filter').click();assert.equal(scopes.length,1);
+ controls.slice(offset).find(c=>c.type==='dropdown'&&c.options['456']).change('456');await added.find(c=>c.text==='Apply assignment filter').click();assert.deepEqual(Array.from(scopes.at(-1)),['456']);plugin.onunload();
+});
+
+test('saved ticket user-group filters survive plugin startup validation',async()=>{
+ const key='task2do-autotask-tickets-view',saved={viewPreferences:{[key]:{ticketAssignmentMode:'group',ticketUserIds:['123','456'],ticketUserId:'456',ticketStatus:'9'}}};
+ const {plugin,views}=await harness(saved);const scopes=[],provider={id:'autotask-tickets',capabilities:{read:true,update:false},list:async ids=>{scopes.push(ids);return[];}};plugin.registry.register(provider);
+ const view=views.get(key)({app:plugin.app});await view.onOpen();assert.deepEqual(Array.from(scopes[0]),['123','456']);assert.equal(plugin.settings.viewPreferences[key].ticketStatus,'9');plugin.onunload();
+});
